@@ -66,6 +66,72 @@
 
 ---
 
+## 🏗️ Phase 1 Infrastructure — DEPLOYED (2026-07-15)
+
+    API Management:
+        Name: rp-dev-apim
+        SKU: Consumption_0 (dev)
+        Gateway URL: https://rp-dev-apim.azure-api.net
+        Developer Portal: https://rp-dev-apim.developer.azure-api.net
+        Managed Identity: 54b96758-31e0-446d-a8b0-f8526df26022
+        Features: System-assigned identity, JWT validation ready, rate limiting
+    
+    Service Bus:
+        Name: rp-dev-servicebus
+        SKU: Standard
+        Endpoint: https://rp-dev-servicebus.servicebus.windows.net:443/
+        Authentication: Managed Identity only (local auth disabled)
+        Topics (8): OrganizationEvents, ProjectEvents, LicenseEvents, BillingEvents, MarketplaceEvents, NotificationEvents, AnalyticsEvents, AuditEvents
+        Queues (7): Email, Webhook, InvoiceGeneration, UsageAggregation, Cleanup, Retry, DeadLetterProcessing
+    
+    Redis Cache:
+        Name: rp-dev-redis-1fe1d5
+        SKU: Basic C0 (250MB)
+        Endpoint: rp-dev-redis-1fe1d5.redis.cache.windows.net:6380 (SSL)
+        Location: eastus
+        Features: TLS 1.2, maxmemory-policy=volatile-lru
+    
+    Azure SQL:
+        Server: rp-dev-sql-29a04e
+        FQDN: rp-dev-sql-29a04e.database.windows.net
+        Location: centralus (eastus/eastus2/westus2 provisioning restricted for MPN subscriptions)
+        Database: RestrictPoint (32GB, GP_S_Gen5_1 serverless)
+        SKU: Serverless (0.5-1 vCore, auto-pause 60min)
+        Authentication: Entra ID only (no SQL auth)
+        Admin: RestrictPoint Service Principal (0fdf5874-f3ed-425e-a267-d8c8218d2444)
+        Features: TLS 1.2, TDE enabled, backup retention 7 days
+    
+    App Configuration:
+        Name: rp-dev-appconfig
+        SKU: Free
+        Endpoint: https://rp-dev-appconfig.azconfig.io
+        Authentication: Managed Identity only (local auth disabled)
+        Features: Feature flags, soft delete 7 days
+    
+    Front Door:
+        Name: rp-dev-fd
+        SKU: Standard_AzureFrontDoor
+        Endpoint: placeholder-bghmfff3hsfnhqcy.z01.azurefd.net (placeholder until backends exist)
+        WAF Policy: rpdevfdwaf (Prevention mode)
+        Features: Custom block response, rate limiting ready
+    
+    Terraform State:
+        Backend: azurerm (rpdevtfstate5507)
+        State file: tfstate/dev.tfstate
+        Lock: Azure Storage blob lease
+        Modules: apim, servicebus, redis, sql, appconfig, frontdoor
+    
+    Dev Environment Notes:
+        Total services: 6 core infrastructure components
+        Estimated monthly cost: ~$72-80 (within $150 MPN budget)
+        All resources in RestrictPoint-Shared RG
+        Public endpoints enabled (dev only; prod will use private endpoints)
+        SQL placed in centralus due to MPN regional restrictions
+
+    Next Phase: Phase 2 — Function Apps with Managed Identity, Diagnostic Settings, RBAC
+
+---
+
 ## Identity
 
     App: apps/api-identity (RestrictPoint.Api.Identity)

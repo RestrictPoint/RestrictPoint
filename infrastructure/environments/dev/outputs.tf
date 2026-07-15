@@ -23,3 +23,55 @@ output "log_analytics_workspace_key" {
   value       = azurerm_log_analytics_workspace.main.primary_shared_key
   sensitive   = true
 }
+
+# Phase 1 outputs
+output "servicebus_namespace_name" {
+  description = "Service Bus namespace name."
+  value       = module.servicebus.namespace_name
+}
+
+output "servicebus_endpoint" {
+  description = "Service Bus endpoint."
+  value       = module.servicebus.endpoint
+}
+
+output "redis_hostname" {
+  description = "Redis hostname."
+  value       = module.redis.hostname
+}
+
+output "redis_ssl_port" {
+  description = "Redis SSL port."
+  value       = module.redis.ssl_port
+}
+
+output "sql_server_fqdn" {
+  description = "SQL Server FQDN."
+  value       = module.sql.server_fqdn
+}
+
+output "sql_database_name" {
+  description = "SQL Database name."
+  value       = module.sql.database_name
+}
+
+output "appconfig_endpoint" {
+  description = "App Configuration endpoint."
+  value       = module.appconfig.endpoint
+}
+
+output "apim_gateway_url" {
+  description = "API Management gateway URL."
+  value       = module.apim.gateway_url
+}
+
+output "apim_principal_id" {
+  description = "APIM Managed Identity principal ID for RBAC assignments."
+  value       = module.apim.principal_id
+}
+
+output "frontdoor_endpoint" {
+  description = "Front Door placeholder endpoint (replace when backends exist)."
+  value       = module.frontdoor.endpoint_hostname
+}
+

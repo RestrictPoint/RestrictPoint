@@ -23,7 +23,6 @@ obj/
 *.tfstate.*
 *.tfvars
 !*.auto.tfvars.example
-.terraform.lock.hcl
 
 # IDE
 .vs/
