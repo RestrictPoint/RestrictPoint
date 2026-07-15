@@ -9,8 +9,8 @@ terraform {
   }
 
   backend "azurerm" {
-    resource_group_name  = "rg-restrictpoint-tfstate"
-    storage_account_name = "restrictpointtfstate"
+    resource_group_name  = "RestrictPoint-Shared"
+    storage_account_name = "rpdevtfstate5507"
     container_name       = "tfstate"
     key                  = "dev.tfstate"
     use_oidc             = true

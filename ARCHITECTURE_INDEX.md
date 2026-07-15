@@ -8,6 +8,64 @@
 
 ---
 
+## 🏗️ Phase 0 Infrastructure — DEPLOYED (2026-07-15)
+
+    GitHub Repository:
+        Org: RestrictPoint
+        Repo: RestrictPoint
+        URL: https://github.com/RestrictPoint/RestrictPoint
+        Main branch: main
+
+    Azure Resources (RestrictPoint-Shared RG, eastus):
+        Storage Account: rpdevtfstate5507
+            Container: tfstate (Terraform state backend)
+            Versioning: enabled
+            Soft delete: 30 days
+            RBAC: SP has Storage Blob Data Contributor
+        
+        Key Vault: rp-dev-kv-1fe1d5
+            URI: https://rp-dev-kv-1fe1d5.vault.azure.net/
+            RBAC: enabled (no access policies)
+            Soft delete: 30 days
+            Purge protection: disabled (dev only)
+        
+        Log Analytics: rp-dev-logs
+            Retention: 30 days
+            Daily quota: 1 GB (free tier cap)
+        
+        Budget: RestrictPoint-Dev
+            Amount: $150/month (MPN credit cap)
+            Alerts: $50 (33%), $100 (67%), $140 (93%)
+            Email: rajiv@restrictpoint.com
+
+    DNS:
+        Zone: restrictpoint.com (RestrictPoint-Shared RG)
+        Delegation: live (Azure DNS nameservers)
+        Planned subdomains: portal, admin, marketplace, docs, api
+
+    GitHub Actions:
+        OIDC Federation: configured (main branch + pull requests)
+        Variables: AZURE_CLIENT_ID, AZURE_SUBSCRIPTION_ID, AZURE_TENANT_ID
+        Terraform workflow: .github/workflows/terraform.yml
+            Triggers: push to main, PRs (infrastructure/** paths)
+            Plan on PR, apply on main push
+
+    Service Principal:
+        App ID: 1c11f175-489a-4765-8584-d8ce517e0a3e
+        Multi-tenant: enabled
+        Roles: Contributor, User Access Administrator, Key Vault Administrator
+        Graph API: Application.ReadWrite.All (both tenants)
+        Federated credentials: github-actions-main, github-actions-pr
+
+    Entra External ID:
+        Tenant: Restrict Point Customers (66162195-1310-42eb-86e5-94dbef0e027c)
+        Pre-created app: Restrict Point Portal (c607b690-8e90-4e29-8c9a-03960055e726)
+        Domain: restrictpointext.ciamlogin.com (default)
+
+    Next Phase: Phase 1 — Core Infrastructure (VNet/firewalls, APIM, Service Bus, Redis, SQL, App Config, Front Door)
+
+---
+
 ## Identity
 
     App: apps/api-identity (RestrictPoint.Api.Identity)
