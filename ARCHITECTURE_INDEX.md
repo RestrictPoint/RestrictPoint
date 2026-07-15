@@ -128,7 +128,88 @@
         Public endpoints enabled (dev only; prod will use private endpoints)
         SQL placed in centralus due to MPN regional restrictions
 
-    Next Phase: Phase 2 — Function Apps with Managed Identity, Diagnostic Settings, RBAC
+    Next Phase: Phase 3 — Identity System Implementation (business logic, Entra integration, JWT validation)
+
+---
+
+## 🚀 Phase 2 Function Apps — DEPLOYED (2026-07-15)
+
+    Overview:
+        6 Function Apps deployed with System-assigned Managed Identity
+        Consumption plan (Y1) for serverless execution
+        Location: centralus (Y1 quota unavailable in eastus for MPN subscriptions)
+        All apps linked to Application Insights + Log Analytics
+        Diagnostic settings configured for all resources
+        RBAC role assignments configured for Managed Identity access
+
+    Identity Function App:
+        Name: rp-dev-func-identity
+        Hostname: rp-dev-func-identity.azurewebsites.net
+        Managed Identity: 6e55f796-1c06-4d03-995e-a0aa090acf62
+        Storage: rpdevstidentity
+        App Insights: rp-dev-ai-identity
+        Service Plan: rp-dev-plan-identity (Y1 Consumption)
+        RBAC: Key Vault Secrets User, SQL DB Contributor, Service Bus Sender/Receiver, App Config Reader, Redis Contributor
+
+    Licensing Function App:
+        Name: rp-dev-func-licensing
+        Hostname: rp-dev-func-licensing.azurewebsites.net
+        Managed Identity: 3d7121fd-e294-42cc-934b-d938f4af5c4e
+        Storage: rpdevstlicensing
+        App Insights: rp-dev-ai-licensing
+        Service Plan: rp-dev-plan-licensing (Y1 Consumption)
+        RBAC: Key Vault Secrets User, Key Vault Crypto User (for ES256 signing), SQL DB Contributor, Service Bus Sender/Receiver, App Config Reader, Redis Contributor
+
+    Billing Function App:
+        Name: rp-dev-func-billing
+        Hostname: rp-dev-func-billing.azurewebsites.net
+        Managed Identity: 72ec5556-2eaa-4c36-8051-ab4abfbcdc4d
+        Storage: rpdevstbilling
+        App Insights: rp-dev-ai-billing
+        Service Plan: rp-dev-plan-billing (Y1 Consumption)
+        RBAC: Key Vault Secrets User, SQL DB Contributor, Service Bus Sender/Receiver, App Config Reader
+
+    Marketplace Function App:
+        Name: rp-dev-func-marketplace
+        Hostname: rp-dev-func-marketplace.azurewebsites.net
+        Managed Identity: 1a4f5fd9-8586-4972-a271-2f0cc71703cc
+        Storage: rpdevstmarketplace
+        App Insights: rp-dev-ai-marketplace
+        Service Plan: rp-dev-plan-marketplace (Y1 Consumption)
+        RBAC: Key Vault Secrets User, SQL DB Contributor, Service Bus Sender/Receiver, App Config Reader
+
+    Notifications Function App:
+        Name: rp-dev-func-notifications
+        Hostname: rp-dev-func-notifications.azurewebsites.net
+        Managed Identity: 4d058dac-bf4e-4d24-aa02-5040fdda50ec
+        Storage: rpdevstnotifications
+        App Insights: rp-dev-ai-notifications
+        Service Plan: rp-dev-plan-notifications (Y1 Consumption)
+        RBAC: Key Vault Secrets User, SQL DB Contributor, Service Bus Sender/Receiver, App Config Reader
+
+    Analytics Function App:
+        Name: rp-dev-func-analytics
+        Hostname: rp-dev-func-analytics.azurewebsites.net
+        Managed Identity: 2cda43c3-2661-4d8b-b05d-74a31531b053
+        Storage: rpdevstanalytics
+        App Insights: rp-dev-ai-analytics
+        Service Plan: rp-dev-plan-analytics (Y1 Consumption)
+        RBAC: Key Vault Secrets User, SQL DB Contributor, Service Bus Sender/Receiver, App Config Reader
+
+    Terraform State:
+        Modules added: functionapp, rbac
+        Resources added: 69 (6 Function Apps + storage + App Insights + service plans + diagnostic settings + RBAC assignments)
+    
+    Phase 2 Notes:
+        Flex Consumption (FC1) attempted but failed (requires function_app_config block not yet supported in Terraform provider)
+        Switched to traditional Consumption (Y1) plan
+        Y1 quota unavailable in eastus for MPN subscriptions, deployed to centralus
+        All Function Apps have System-assigned Managed Identity configured
+        No connection strings used - all access via Managed Identity
+        Diagnostic settings enabled for Function Apps and Application Insights
+        Total cost addition: ~$0-5/month (Consumption plan only charges for execution)
+
+    Next Phase: Phase 3 — Identity System Implementation (Entra integration, JWT validation, user/org management)
 
 ---
 

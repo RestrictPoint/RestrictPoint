@@ -75,3 +75,64 @@ output "frontdoor_endpoint" {
   value       = module.frontdoor.endpoint_hostname
 }
 
+# Phase 2 outputs - Function Apps
+output "func_identity_hostname" {
+  description = "Identity Function App hostname."
+  value       = module.func_identity.function_app_hostname
+}
+
+output "func_identity_principal_id" {
+  description = "Identity Function App Managed Identity principal ID."
+  value       = module.func_identity.principal_id
+}
+
+output "func_licensing_hostname" {
+  description = "Licensing Function App hostname."
+  value       = module.func_licensing.function_app_hostname
+}
+
+output "func_licensing_principal_id" {
+  description = "Licensing Function App Managed Identity principal ID."
+  value       = module.func_licensing.principal_id
+}
+
+output "func_billing_hostname" {
+  description = "Billing Function App hostname."
+  value       = module.func_billing.function_app_hostname
+}
+
+output "func_billing_principal_id" {
+  description = "Billing Function App Managed Identity principal ID."
+  value       = module.func_billing.principal_id
+}
+
+output "func_marketplace_hostname" {
+  description = "Marketplace Function App hostname."
+  value       = module.func_marketplace.function_app_hostname
+}
+
+output "func_marketplace_principal_id" {
+  description = "Marketplace Function App Managed Identity principal ID."
+  value       = module.func_marketplace.principal_id
+}
+
+output "func_notifications_hostname" {
+  description = "Notifications Function App hostname."
+  value       = module.func_notifications.function_app_hostname
+}
+
+output "func_notifications_principal_id" {
+  description = "Notifications Function App Managed Identity principal ID."
+  value       = module.func_notifications.principal_id
+}
+
+output "func_analytics_hostname" {
+  description = "Analytics Function App hostname."
+  value       = module.func_analytics.function_app_hostname
+}
+
+output "func_analytics_principal_id" {
+  description = "Analytics Function App Managed Identity principal ID."
+  value       = module.func_analytics.principal_id
+}
+

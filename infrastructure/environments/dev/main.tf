@@ -131,3 +131,172 @@ module "frontdoor" {
   tags = local.tags
 }
 
+# Phase 2: Function Apps with Managed Identity
+
+# Identity Service
+module "func_identity" {
+  source = "../../modules/functionapp"
+
+  function_app_name          = "${local.name_prefix}-func-identity"
+  service_plan_name          = "${local.name_prefix}-plan-identity"
+  storage_account_name       = "${replace(local.name_prefix, "-", "")}stidentity"
+  app_insights_name          = "${local.name_prefix}-ai-identity"
+  location                   = "centralus" # MPN subscription: Y1 quota unavailable in eastus
+  resource_group_name        = data.azurerm_resource_group.shared.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  sku_name                   = "Y1" # Consumption
+
+  tags = local.tags
+}
+
+# Licensing Service
+module "func_licensing" {
+  source = "../../modules/functionapp"
+
+  function_app_name          = "${local.name_prefix}-func-licensing"
+  service_plan_name          = "${local.name_prefix}-plan-licensing"
+  storage_account_name       = "${replace(local.name_prefix, "-", "")}stlicensing"
+  app_insights_name          = "${local.name_prefix}-ai-licensing"
+  location                   = "centralus"
+  resource_group_name        = data.azurerm_resource_group.shared.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  sku_name                   = "Y1"
+
+  tags = local.tags
+}
+
+# Billing Service
+module "func_billing" {
+  source = "../../modules/functionapp"
+
+  function_app_name          = "${local.name_prefix}-func-billing"
+  service_plan_name          = "${local.name_prefix}-plan-billing"
+  storage_account_name       = "${replace(local.name_prefix, "-", "")}stbilling"
+  app_insights_name          = "${local.name_prefix}-ai-billing"
+  location                   = "centralus"
+  resource_group_name        = data.azurerm_resource_group.shared.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  sku_name                   = "Y1"
+
+  tags = local.tags
+}
+
+# Marketplace Service
+module "func_marketplace" {
+  source = "../../modules/functionapp"
+
+  function_app_name          = "${local.name_prefix}-func-marketplace"
+  service_plan_name          = "${local.name_prefix}-plan-marketplace"
+  storage_account_name       = "${replace(local.name_prefix, "-", "")}stmarketplace"
+  app_insights_name          = "${local.name_prefix}-ai-marketplace"
+  location                   = "centralus"
+  resource_group_name        = data.azurerm_resource_group.shared.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  sku_name                   = "Y1"
+
+  tags = local.tags
+}
+
+# Notifications Service
+module "func_notifications" {
+  source = "../../modules/functionapp"
+
+  function_app_name          = "${local.name_prefix}-func-notifications"
+  service_plan_name          = "${local.name_prefix}-plan-notifications"
+  storage_account_name       = "${replace(local.name_prefix, "-", "")}stnotifications"
+  app_insights_name          = "${local.name_prefix}-ai-notifications"
+  location                   = "centralus"
+  resource_group_name        = data.azurerm_resource_group.shared.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  sku_name                   = "Y1"
+
+  tags = local.tags
+}
+
+# Analytics Service
+module "func_analytics" {
+  source = "../../modules/functionapp"
+
+  function_app_name          = "${local.name_prefix}-func-analytics"
+  service_plan_name          = "${local.name_prefix}-plan-analytics"
+  storage_account_name       = "${replace(local.name_prefix, "-", "")}stanalytics"
+  app_insights_name          = "${local.name_prefix}-ai-analytics"
+  location                   = "centralus"
+  resource_group_name        = data.azurerm_resource_group.shared.name
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+  sku_name                   = "Y1"
+
+  tags = local.tags
+}
+
+# Phase 2: RBAC assignments for Function Apps
+module "rbac" {
+  source = "../../modules/rbac"
+
+  key_vault_id           = azurerm_key_vault.main.id
+  sql_server_id          = module.sql.server_id
+  servicebus_namespace_id = module.servicebus.namespace_id
+  appconfig_id           = module.appconfig.appconfig_id
+  redis_cache_id         = module.redis.redis_id
+
+  # All Function Apps need Key Vault Secrets User access
+  key_vault_secrets_user_principal_ids = {
+    identity      = module.func_identity.principal_id
+    licensing     = module.func_licensing.principal_id
+    billing       = module.func_billing.principal_id
+    marketplace   = module.func_marketplace.principal_id
+    notifications = module.func_notifications.principal_id
+    analytics     = module.func_analytics.principal_id
+  }
+
+  # Licensing Function needs Key Vault Crypto User for ES256 signing
+  key_vault_crypto_user_principal_ids = {
+    licensing = module.func_licensing.principal_id
+  }
+
+  # All Function Apps need SQL access (each has its own schema)
+  sql_db_contributor_principal_ids = {
+    identity      = module.func_identity.principal_id
+    licensing     = module.func_licensing.principal_id
+    billing       = module.func_billing.principal_id
+    marketplace   = module.func_marketplace.principal_id
+    notifications = module.func_notifications.principal_id
+    analytics     = module.func_analytics.principal_id
+  }
+
+  # All Function Apps can send and receive Service Bus messages
+  servicebus_data_sender_principal_ids = {
+    identity      = module.func_identity.principal_id
+    licensing     = module.func_licensing.principal_id
+    billing       = module.func_billing.principal_id
+    marketplace   = module.func_marketplace.principal_id
+    notifications = module.func_notifications.principal_id
+    analytics     = module.func_analytics.principal_id
+  }
+
+  servicebus_data_receiver_principal_ids = {
+    identity      = module.func_identity.principal_id
+    licensing     = module.func_licensing.principal_id
+    billing       = module.func_billing.principal_id
+    marketplace   = module.func_marketplace.principal_id
+    notifications = module.func_notifications.principal_id
+    analytics     = module.func_analytics.principal_id
+  }
+
+  # All Function Apps need App Configuration access
+  appconfig_data_reader_principal_ids = {
+    identity      = module.func_identity.principal_id
+    licensing     = module.func_licensing.principal_id
+    billing       = module.func_billing.principal_id
+    marketplace   = module.func_marketplace.principal_id
+    notifications = module.func_notifications.principal_id
+    analytics     = module.func_analytics.principal_id
+  }
+
+  # Function Apps that need Redis access (Identity for sessions, Licensing for license cache)
+  redis_contributor_principal_ids = {
+    identity  = module.func_identity.principal_id
+    licensing = module.func_licensing.principal_id
+  }
+}
+
