@@ -1,0 +1,26 @@
+<Project>
+  <!--
+    ReadyToRun (R2R) for Azure Function Apps.
+
+    Native AOT was evaluated and rejected: the Functions isolated worker AOT support is
+    experimental, and our stack (ASP.NET Core integration, EF Core, Application Insights,
+    Microsoft.IdentityModel JWT validation) depends on runtime reflection that AOT breaks.
+
+    ReadyToRun is the production-supported cold-start optimization: it AOT-compiles IL to
+    native code at publish time while keeping the full runtime, eliminating most JIT cost
+    on cold start with zero library-compatibility loss. Combined with
+    WEBSITE_USE_PLACEHOLDER_DOTNETISOLATED=1 (set in Terraform), this is Microsoft's
+    recommended configuration for .NET isolated Functions on Consumption plans.
+
+    R2R only takes effect on RID-specific publishes (dotnet publish -r linux-x64);
+    local F5 builds are unaffected.
+
+    This file is Directory.Build.targets (not .props) because AzureFunctionsVersion is
+    defined in each project file and is only available after project evaluation.
+  -->
+  <PropertyGroup Condition="'$(AzureFunctionsVersion)' != ''">
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <TieredCompilation>true</TieredCompilation>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+</Project>
