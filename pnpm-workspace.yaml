@@ -1,0 +1,6 @@
+packages:
+  - "apps/portal"
+  - "apps/admin"
+  - "apps/marketplace"
+  - "apps/documentation"
+  - "packages/*"

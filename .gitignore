@@ -1,0 +1,34 @@
+# Credentials - NEVER commit
+credentials.md
+*.pem
+*.pfx
+local.settings.json
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# .NET
+bin/
+obj/
+*.user
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.auto.tfvars.example
+.terraform.lock.hcl
+
+# IDE
+.vs/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
