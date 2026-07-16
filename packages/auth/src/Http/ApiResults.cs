@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using RestrictPoint.Common;
 
-namespace RestrictPoint.Api.Identity.Functions.Http;
+namespace RestrictPoint.Auth.Http;
 
 /// <summary>
 /// Maps application results to the standard response envelope (docs/16):

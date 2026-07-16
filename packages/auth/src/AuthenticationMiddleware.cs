@@ -19,14 +19,17 @@ public sealed partial class AuthenticationMiddleware : IFunctionsWorkerMiddlewar
 
     private const string CorrelationHeader = "x-correlation-id";
 
-    private static readonly string[] AnonymousFunctions = ["HealthLive", "HealthReady"];
-
     private readonly IJwtValidator _jwtValidator;
+    private readonly AuthenticationMiddlewareOptions _options;
     private readonly ILogger<AuthenticationMiddleware> _logger;
 
-    public AuthenticationMiddleware(IJwtValidator jwtValidator, ILogger<AuthenticationMiddleware> logger)
+    public AuthenticationMiddleware(
+        IJwtValidator jwtValidator,
+        AuthenticationMiddlewareOptions options,
+        ILogger<AuthenticationMiddleware> logger)
     {
         _jwtValidator = jwtValidator;
+        _options = options;
         _logger = logger;
     }
 
@@ -43,7 +46,7 @@ public sealed partial class AuthenticationMiddleware : IFunctionsWorkerMiddlewar
         var correlationId = ResolveCorrelationId(httpContext);
         httpContext.Response.Headers[CorrelationHeader] = correlationId;
 
-        if (AnonymousFunctions.Contains(context.FunctionDefinition.Name, StringComparer.OrdinalIgnoreCase))
+        if (_options.AnonymousFunctions.Contains(context.FunctionDefinition.Name, StringComparer.OrdinalIgnoreCase))
         {
             context.Items[RequestContextKey] = new RequestContext { CorrelationId = correlationId };
             await next(context).ConfigureAwait(false);

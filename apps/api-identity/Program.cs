@@ -82,7 +82,10 @@ else
 }
 
 // --- Application ------------------------------------------------------------------------
-builder.Services.AddScoped<IOutboxWriter, OutboxWriter>();
+builder.Services.AddSingleton(new AuthenticationMiddlewareOptions());
+builder.Services.AddScoped<IOutboxWriter>(provider =>
+    new OutboxWriter(provider.GetRequiredService<IdentityDbContext>()));
+builder.Services.AddSingleton<OutboxDispatcher>();
 builder.Services.AddScoped<UserResolver>();
 builder.Services.AddScoped<GetMeHandler>();
 builder.Services.AddScoped<ListOrganizationsHandler>();

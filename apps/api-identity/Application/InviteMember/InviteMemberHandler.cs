@@ -1,13 +1,13 @@
 using System.Security.Cryptography;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
-using RestrictPoint.Api.Identity.Application.Abstractions;
 using RestrictPoint.Api.Identity.Application.Common;
 using RestrictPoint.Api.Identity.Application.Events;
 using RestrictPoint.Api.Identity.Contracts;
 using RestrictPoint.Api.Identity.Domain;
 using RestrictPoint.Api.Identity.Infrastructure;
 using RestrictPoint.Common;
+using RestrictPoint.Database;
 using RestrictPoint.Messaging;
 
 namespace RestrictPoint.Api.Identity.Application.InviteMember;

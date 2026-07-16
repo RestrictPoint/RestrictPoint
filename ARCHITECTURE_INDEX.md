@@ -380,65 +380,72 @@
 ## Licensing
 
     App: apps/api-licensing (RestrictPoint.Api.Licensing)
-    Service Bus Topic: licensing
+    Service Bus Topic: LicenseEvents
     Hot path: license validation <50ms, no multi-table joins, Redis-first
 
-    Database (Licensing schema):
-        Licenses
-        LicenseFeatures
-        LicenseTokens
-        Installations
-        OutboxEvents
+    ✅ PHASE 4 IMPLEMENTED (2026-07-16):
 
-    APIs:
-        POST /v1/licenses/validate       (SDK critical path)
-        POST /v1/licenses/issue          (internal, billing-triggered)
-        POST /v1/licenses/revoke
-        GET  /v1/licenses
-        GET  /v1/licenses/{id}
+    Cryptography:
+        Signing: ES256 (ECDSA P-256) via Key Vault sign op (key "license-signing",
+            rp-dev-kv-301106, auto-rotation P180D, private key never leaves vault)
+        Token format: JWS compact — header {alg:ES256, typ:JWT, kid:<KV key version>}
+        Verification: cached public keys (KeyClient, per-version immutable cache);
+            hot path never round-trips to Key Vault
+        Hardening tested: payload tampering, signature tampering, alg substitution
+            (alg=none forgery), unknown kid, malformed tokens
 
-    Events (published):
-        LicenseIssued
-        LicenseActivated
-        LicenseValidationSucceeded
-        LicenseValidationFailed
-        LicenseRefreshed
-        LicenseRenewed
-        LicenseExpired
-        LicenseRevoked
-        LicenseSuspended
-        LicenseReactivated
-        FeatureEntitlementAdded
-        FeatureEntitlementRemoved
-        LicenseSigningKeyRotated
-        LicenseInstallationRegistered
-        LicenseInstallationRemoved
+    Validation pipeline (POST /v1/licenses/validate — anonymous; the signed token IS
+    the credential):
+        1. Replay protection: timestamp ±5 min + Redis nonce dedupe (SETNX, 10 min window;
+           degrades open on Redis outage — availability over replay hardening)
+        2. ES256 signature verification
+        3. Binding: tenant + project + webPart GUID must all match payload
+        4. State: Redis license cache (12h TTL) → SQL fallback; revoked/suspended/expired
+           return 200 {isValid:false, status}
+        5. Installation tracking: first contact = activation (LicenseActivated event)
+        6. Async events on every outcome via outbox (SDK never waits)
 
-    Events (consumed):
+    Database (Licensing schema, migration InitialLicensingSchema applied):
+        Licenses (type, status, dev/customer org, customer tenant, subscription link, version)
+        LicenseFeatures / LicenseLimits / LicenseWebParts (payload source of truth)
+        LicenseTokens (jti + KV key version; per-token revocation)
+        Installations (unique LicenseId+InstallationId, LastValidatedUtc)
+        OutboxMessages
+        MI DB user: rp-dev-func-licensing (db_datareader + db_datawriter, WITH SID)
+
+    APIs (implemented):
+        POST /v1/licenses/validate  → anonymous, replay-protected (SDK critical path)
+        POST /v1/licenses/issue     → 201, roles Owner/Admin/Developer in dev org
+        POST /v1/licenses/revoke    → roles Owner/Admin; tokens revoked + cache invalidated
+        GET  /v1/licenses?organizationId=&projectId=  → member of dev org
+        GET  /v1/licenses/{id}      → member of dev org (404 for non-members)
+
+    Cross-service authorization:
+        IdentityOrganizationAuthorizer → GET /v1/identity/me with caller's bearer token
+        (REST between bounded contexts; Licensing never reads Identity tables)
+        Identity__BaseUrl = https://rp-dev-func-identity.azurewebsites.net/api/
+
+    Events (implemented): LicenseIssued, LicenseActivated, LicenseValidationSucceeded,
+        LicenseValidationFailed, LicenseRevoked (all v1.0, via outbox → LicenseEvents)
+    Events (catalog, later phases): LicenseRefreshed, LicenseRenewed, LicenseExpired,
+        LicenseSuspended, LicenseReactivated, FeatureEntitlement*, LicenseSigningKeyRotated
+
+    Events (consumed — Phase 5 Billing integration):
         SubscriptionActivated → IssueLicense
         SubscriptionCanceled/Expired → RevokeLicense/ExpireLicense
         PaymentFailed → SuspendLicense (grace policy)
-        OrganizationSuspended
 
     Functions:
-        ValidateLicense
-        IssueLicense
-        RevokeLicense
-        RenewLicense
-        RotateSigningKey
-        RegisterInstallation
+        ValidateLicense, IssueLicense, RevokeLicense, ListLicenses, GetLicense,
+        DispatchOutbox (timer 30s), HealthLive/HealthReady
 
-    Dependencies:
-        Billing (subscription events)
-        Projects (signing keys, config)
-        Key Vault (ES256 / ECDSA P-256 signing)
-        Redis (license cache)
+    Shared package changes (Phase 4 refactor):
+        OutboxWriter/OutboxDispatcher generalized into RestrictPoint.Database
+        ApiResults moved to RestrictPoint.Auth.Http
+        AuthenticationMiddlewareOptions: configurable anonymous-function allowlist
 
-    Shared Contracts:
-        LicenseDto
-        LicenseValidationRequest
-        LicenseValidationResponse
-        License JWT (offline-capable, ES256-signed)
+    Tests: tests/licensing (35 passing — crypto attacks, validation pipeline,
+        issuance authorization matrix, revocation propagation)
 
 ---
 

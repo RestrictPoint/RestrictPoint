@@ -50,6 +50,25 @@ resource "azurerm_log_analytics_workspace" "main" {
 # Get current client (SP or user) for Key Vault RBAC
 data "azurerm_client_config" "current" {}
 
+# Phase 4: ES256 (ECDSA P-256) license signing key (docs/10). The private key never
+# leaves the vault; the Licensing service signs via the Key Vault sign operation with
+# Managed Identity. Rotated every 180 days per the licensing engine spec.
+resource "azurerm_key_vault_key" "license_signing" {
+  name         = "license-signing"
+  key_vault_id = azurerm_key_vault.main.id
+  key_type     = "EC"
+  curve        = "P-256"
+  key_opts     = ["sign", "verify"]
+
+  rotation_policy {
+    automatic {
+      time_after_creation = "P180D"
+    }
+  }
+
+  tags = local.tags
+}
+
 # Phase 1: Service Bus for event-driven architecture
 module "servicebus" {
   source = "../../modules/servicebus"
@@ -181,6 +200,25 @@ module "func_licensing" {
   resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
+
+  app_settings = {
+    # Entra External ID token validation (management endpoints)
+    "EntraExternalId__TenantSubdomain" = "restrictpointext"
+    "EntraExternalId__TenantId"        = "66162195-1310-42eb-86e5-94dbef0e027c"
+    "EntraExternalId__Audience"        = "13db69ee-e73b-45c6-a7e3-5f08b194094d;api://13db69ee-e73b-45c6-a7e3-5f08b194094d"
+
+    # Managed Identity data access (no secrets)
+    "Sql__ConnectionString"               = "Server=tcp:${module.sql.server_fqdn},1433;Database=${module.sql.database_name};Authentication=Active Directory Default;Encrypt=True;"
+    "ServiceBus__FullyQualifiedNamespace" = "${module.servicebus.namespace_name}.servicebus.windows.net"
+    "Redis__HostName"                     = module.redis.hostname
+
+    # ES256 license signing via Key Vault (docs/10)
+    "KeyVault__VaultUri"       = azurerm_key_vault.main.vault_uri
+    "KeyVault__SigningKeyName" = azurerm_key_vault_key.license_signing.name
+
+    # Identity service for organization role authorization (REST, token passthrough)
+    "Identity__BaseUrl" = "https://${module.func_identity.function_app_hostname}/api/"
+  }
 
   tags = local.tags
 }

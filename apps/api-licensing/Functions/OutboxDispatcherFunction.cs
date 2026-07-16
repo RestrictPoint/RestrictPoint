@@ -1,16 +1,16 @@
 using Microsoft.Azure.Functions.Worker;
-using RestrictPoint.Api.Identity.Infrastructure;
+using RestrictPoint.Api.Licensing.Infrastructure;
 using RestrictPoint.Database;
 
-namespace RestrictPoint.Api.Identity.Functions;
+namespace RestrictPoint.Api.Licensing.Functions;
 
-/// <summary>Timer trigger hosting the shared outbox dispatcher for the Identity context.</summary>
+/// <summary>Timer trigger hosting the shared outbox dispatcher for the Licensing context.</summary>
 public sealed class OutboxDispatcherFunction
 {
-    private readonly IdentityDbContext _dbContext;
+    private readonly LicensingDbContext _dbContext;
     private readonly OutboxDispatcher _dispatcher;
 
-    public OutboxDispatcherFunction(IdentityDbContext dbContext, OutboxDispatcher dispatcher)
+    public OutboxDispatcherFunction(LicensingDbContext dbContext, OutboxDispatcher dispatcher)
     {
         _dbContext = dbContext;
         _dispatcher = dispatcher;

@@ -6,6 +6,7 @@ using RestrictPoint.Api.Identity.Contracts;
 using RestrictPoint.Api.Identity.Domain;
 using RestrictPoint.Api.Identity.Infrastructure;
 using RestrictPoint.Common;
+using RestrictPoint.Database;
 using RestrictPoint.Messaging;
 using Xunit;
 

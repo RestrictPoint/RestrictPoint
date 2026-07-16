@@ -8,8 +8,8 @@ using RestrictPoint.Api.Identity.Application.GetMe;
 using RestrictPoint.Api.Identity.Application.InviteMember;
 using RestrictPoint.Api.Identity.Application.ListOrganizations;
 using RestrictPoint.Api.Identity.Contracts;
-using RestrictPoint.Api.Identity.Functions.Http;
 using RestrictPoint.Auth;
+using RestrictPoint.Auth.Http;
 
 namespace RestrictPoint.Api.Identity.Functions;
 
