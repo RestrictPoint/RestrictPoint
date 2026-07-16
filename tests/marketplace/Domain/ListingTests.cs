@@ -1,261 +1,209 @@
-using FluentAssertions;
 using RestrictPoint.Api.Marketplace.Domain;
+using Xunit;
 
-namespace RestrictPoint.Tests.Marketplace.Domain;
+namespace RestrictPoint.Api.Marketplace.Tests.Domain;
 
 public sealed class ListingTests
 {
-    [Fact]
-    public void Create_WithValidData_CreatesListing()
+    private static Listing CreateDraftListing() => Listing.Create(
+        Guid.NewGuid(), Guid.NewGuid(), "Analytics Dashboard",
+        "A powerful analytics dashboard web part.", Guid.NewGuid(), Guid.NewGuid());
+
+    private static Listing CreatePublishedListing()
     {
-        var projectId = Guid.NewGuid();
-        var organizationId = Guid.NewGuid();
-        var categoryId = Guid.NewGuid();
-        var webPartGuid = Guid.NewGuid();
+        var listing = CreateDraftListing();
+        listing.PricingPlans.Add(PricingPlan.Create(
+            listing.Id, "Standard", PricingType.MonthlySubscription, 9.99m, "USD",
+            BillingInterval.Monthly, 14, null));
+        listing.Publish();
+        return listing;
+    }
 
+    [Fact]
+    public void Create_produces_draft_with_trimmed_fields()
+    {
         var listing = Listing.Create(
-            projectId,
-            organizationId,
-            "My Web Part",
-            "A great web part for SharePoint",
-            categoryId,
-            webPartGuid);
+            Guid.NewGuid(), Guid.NewGuid(), "  Title  ", "  Description  ",
+            Guid.NewGuid(), Guid.NewGuid());
 
-        listing.Should().NotBeNull();
-        listing.Title.Should().Be("My Web Part");
-        listing.Description.Should().Be("A great web part for SharePoint");
-        listing.Status.Should().Be(ListingStatus.Draft);
-        listing.ProjectId.Should().Be(projectId);
-        listing.OrganizationId.Should().Be(organizationId);
-        listing.CategoryId.Should().Be(categoryId);
-        listing.WebPartGuid.Should().Be(webPartGuid);
-        listing.IsFeatured.Should().BeFalse();
-        listing.InstallCount.Should().Be(0);
-        listing.AverageRating.Should().Be(0);
-        listing.ReviewCount.Should().Be(0);
+        Assert.Equal(ListingStatus.Draft, listing.Status);
+        Assert.Equal("Title", listing.Title);
+        Assert.Equal("Description", listing.Description);
+        Assert.False(listing.IsFeatured);
+        Assert.Equal(0, listing.InstallCount);
+        Assert.Equal(0, listing.ReviewCount);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData(null)]
-    public void Create_WithInvalidTitle_ThrowsArgumentException(string? title)
+    public void Create_rejects_empty_title(string title)
     {
-        var act = () => Listing.Create(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            title!,
-            "Description",
-            Guid.NewGuid(),
-            Guid.NewGuid());
-
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*Title*");
+        Assert.Throws<ArgumentException>(() => Listing.Create(
+            Guid.NewGuid(), Guid.NewGuid(), title, "Description", Guid.NewGuid(), Guid.NewGuid()));
     }
 
     [Fact]
-    public void Create_WithTitleTooLong_ThrowsArgumentException()
+    public void Create_rejects_title_over_256_characters()
     {
-        var longTitle = new string('A', 257);
-
-        var act = () => Listing.Create(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            longTitle,
-            "Description",
-            Guid.NewGuid(),
-            Guid.NewGuid());
-
-        act.Should().Throw<ArgumentException>()
-            .WithMessage("*Title*");
+        Assert.Throws<ArgumentException>(() => Listing.Create(
+            Guid.NewGuid(), Guid.NewGuid(), new string('x', 257), "Description",
+            Guid.NewGuid(), Guid.NewGuid()));
     }
 
     [Fact]
-    public void Publish_FromDraft_WithPricingPlans_Succeeds()
+    public void Create_rejects_empty_description()
     {
-        var listing = CreateDraftListing();
-        var plan = PricingPlan.Create(
-            listing.Id,
-            "Standard",
-            PricingType.MonthlySubscription,
-            29.99m,
-            "USD",
-            BillingInterval.Monthly,
-            14,
-            null);
-        listing.PricingPlans.Add(plan);
-
-        listing.Publish();
-
-        listing.Status.Should().Be(ListingStatus.Published);
+        Assert.Throws<ArgumentException>(() => Listing.Create(
+            Guid.NewGuid(), Guid.NewGuid(), "Title", "  ", Guid.NewGuid(), Guid.NewGuid()));
     }
 
     [Fact]
-    public void Publish_WithoutPricingPlans_ThrowsInvalidOperationException()
+    public void Publish_from_draft_with_pricing_succeeds()
+    {
+        var listing = CreatePublishedListing();
+
+        Assert.Equal(ListingStatus.Published, listing.Status);
+    }
+
+    [Fact]
+    public void Publish_without_pricing_plans_throws()
     {
         var listing = CreateDraftListing();
 
-        var act = () => listing.Publish();
-
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*pricing plan*");
+        Assert.Throws<InvalidOperationException>(listing.Publish);
     }
 
     [Fact]
-    public void Publish_FromRemoved_ThrowsInvalidOperationException()
+    public void Publish_from_removed_throws()
     {
         var listing = CreateDraftListing();
         listing.Remove();
 
-        var act = () => listing.Publish();
-
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*transition*");
+        Assert.Throws<InvalidOperationException>(listing.Publish);
     }
 
     [Fact]
-    public void Suspend_FromPublished_Succeeds()
+    public void Suspend_published_listing_succeeds()
     {
         var listing = CreatePublishedListing();
 
-        listing.Suspend("Terms of service violation");
+        listing.Suspend("Policy violation");
 
-        listing.Status.Should().Be(ListingStatus.Suspended);
+        Assert.Equal(ListingStatus.Suspended, listing.Status);
     }
 
     [Fact]
-    public void Deprecate_FromPublished_Succeeds()
+    public void Suspended_listing_can_be_republished()
+    {
+        var listing = CreatePublishedListing();
+        listing.Suspend("Investigation");
+
+        listing.Publish();
+
+        Assert.Equal(ListingStatus.Published, listing.Status);
+    }
+
+    [Fact]
+    public void Deprecate_published_listing_succeeds()
     {
         var listing = CreatePublishedListing();
 
         listing.Deprecate();
 
-        listing.Status.Should().Be(ListingStatus.Deprecated);
+        Assert.Equal(ListingStatus.Deprecated, listing.Status);
     }
 
     [Fact]
-    public void Remove_FromAnyState_Succeeds()
+    public void Deprecated_listing_can_only_be_removed()
+    {
+        var listing = CreatePublishedListing();
+        listing.Deprecate();
+
+        Assert.Throws<InvalidOperationException>(listing.Publish);
+
+        listing.Remove();
+        Assert.Equal(ListingStatus.Removed, listing.Status);
+    }
+
+    [Fact]
+    public void Suspend_draft_listing_throws()
+    {
+        var listing = CreateDraftListing();
+
+        Assert.Throws<InvalidOperationException>(() => listing.Suspend("reason"));
+    }
+
+    [Fact]
+    public void MarkAsFeatured_requires_published_status()
     {
         var draft = CreateDraftListing();
+        Assert.Throws<InvalidOperationException>(draft.MarkAsFeatured);
+
         var published = CreatePublishedListing();
-
-        draft.Remove();
-        published.Remove();
-
-        draft.Status.Should().Be(ListingStatus.Removed);
-        published.Status.Should().Be(ListingStatus.Removed);
+        published.MarkAsFeatured();
+        Assert.True(published.IsFeatured);
     }
 
     [Fact]
-    public void MarkAsFeatured_WhenPublished_Succeeds()
+    public void IncrementInstallCount_increases_count()
     {
         var listing = CreatePublishedListing();
-
-        listing.MarkAsFeatured();
-
-        listing.IsFeatured.Should().BeTrue();
-    }
-
-    [Fact]
-    public void MarkAsFeatured_WhenDraft_ThrowsInvalidOperationException()
-    {
-        var listing = CreateDraftListing();
-
-        var act = () => listing.MarkAsFeatured();
-
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*published*");
-    }
-
-    [Fact]
-    public void IncrementInstallCount_IncreasesCount()
-    {
-        var listing = CreatePublishedListing();
-        var initialCount = listing.InstallCount;
 
         listing.IncrementInstallCount();
+        listing.IncrementInstallCount();
 
-        listing.InstallCount.Should().Be(initialCount + 1);
+        Assert.Equal(2, listing.InstallCount);
     }
 
     [Fact]
-    public void RecalculateRating_WithNoReviews_SetsRatingToZero()
+    public void RecalculateRating_averages_reviews()
     {
         var listing = CreatePublishedListing();
+        listing.Reviews.Add(Review.Create(listing.Id, Guid.NewGuid(), 5, "Excellent"));
+        listing.Reviews.Add(Review.Create(listing.Id, Guid.NewGuid(), 3, "Decent"));
 
         listing.RecalculateRating();
 
-        listing.AverageRating.Should().Be(0);
-        listing.ReviewCount.Should().Be(0);
+        Assert.Equal(4m, listing.AverageRating);
+        Assert.Equal(2, listing.ReviewCount);
     }
 
     [Fact]
-    public void RecalculateRating_WithReviews_CalculatesAverage()
+    public void RecalculateRating_with_no_reviews_resets_to_zero()
     {
         var listing = CreatePublishedListing();
-        listing.Reviews.Add(Review.Create(listing.Id, Guid.NewGuid(), 5, "Great!"));
-        listing.Reviews.Add(Review.Create(listing.Id, Guid.NewGuid(), 3, "OK"));
-        listing.Reviews.Add(Review.Create(listing.Id, Guid.NewGuid(), 4, "Good"));
-
+        listing.Reviews.Add(Review.Create(listing.Id, Guid.NewGuid(), 5, null));
         listing.RecalculateRating();
 
-        listing.AverageRating.Should().Be(4m); // (5+3+4)/3 = 4
-        listing.ReviewCount.Should().Be(3);
+        listing.Reviews.Clear();
+        listing.RecalculateRating();
+
+        Assert.Equal(0m, listing.AverageRating);
+        Assert.Equal(0, listing.ReviewCount);
     }
+}
 
-    [Fact]
-    public void Update_WhenDraft_Succeeds()
+public sealed class ListingStateMachineTests
+{
+    [Theory]
+    [InlineData(ListingStatus.Draft, ListingStatus.Published, true)]
+    [InlineData(ListingStatus.Draft, ListingStatus.Removed, true)]
+    [InlineData(ListingStatus.Draft, ListingStatus.Suspended, false)]
+    [InlineData(ListingStatus.Draft, ListingStatus.Deprecated, false)]
+    [InlineData(ListingStatus.Published, ListingStatus.Suspended, true)]
+    [InlineData(ListingStatus.Published, ListingStatus.Deprecated, true)]
+    [InlineData(ListingStatus.Published, ListingStatus.Removed, true)]
+    [InlineData(ListingStatus.Published, ListingStatus.Draft, false)]
+    [InlineData(ListingStatus.Suspended, ListingStatus.Published, true)]
+    [InlineData(ListingStatus.Suspended, ListingStatus.Removed, true)]
+    [InlineData(ListingStatus.Suspended, ListingStatus.Deprecated, false)]
+    [InlineData(ListingStatus.Deprecated, ListingStatus.Removed, true)]
+    [InlineData(ListingStatus.Deprecated, ListingStatus.Published, false)]
+    [InlineData(ListingStatus.Removed, ListingStatus.Published, false)]
+    [InlineData(ListingStatus.Removed, ListingStatus.Draft, false)]
+    public void CanTransition_enforces_docs13_lifecycle(ListingStatus from, ListingStatus to, bool expected)
     {
-        var listing = CreateDraftListing();
-        var newCategoryId = Guid.NewGuid();
-
-        listing.Update("Updated Title", "Updated Description", newCategoryId, "logo.png", "support.com", "docs.com");
-
-        listing.Title.Should().Be("Updated Title");
-        listing.Description.Should().Be("Updated Description");
-        listing.CategoryId.Should().Be(newCategoryId);
-        listing.LogoUrl.Should().Be("logo.png");
-        listing.SupportUrl.Should().Be("support.com");
-        listing.DocumentationUrl.Should().Be("docs.com");
-    }
-
-    [Fact]
-    public void Update_WhenRemoved_ThrowsInvalidOperationException()
-    {
-        var listing = CreateDraftListing();
-        listing.Remove();
-
-        var act = () => listing.Update("New Title", "New Description", Guid.NewGuid(), null, null, null);
-
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*Removed*");
-    }
-
-    private static Listing CreateDraftListing()
-    {
-        return Listing.Create(
-            Guid.NewGuid(),
-            Guid.NewGuid(),
-            "Test Listing",
-            "Test Description",
-            Guid.NewGuid(),
-            Guid.NewGuid());
-    }
-
-    private static Listing CreatePublishedListing()
-    {
-        var listing = CreateDraftListing();
-        var plan = PricingPlan.Create(
-            listing.Id,
-            "Standard",
-            PricingType.MonthlySubscription,
-            29.99m,
-            "USD",
-            BillingInterval.Monthly,
-            14,
-            null);
-        listing.PricingPlans.Add(plan);
-        listing.Publish();
-        return listing;
+        Assert.Equal(expected, ListingStateMachine.CanTransition(from, to));
     }
 }

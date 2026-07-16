@@ -27,7 +27,7 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                     CreatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     UpdatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DeletedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -58,7 +58,7 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                     CreatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     UpdatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DeletedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -96,7 +96,7 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                     CreatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     UpdatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DeletedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -122,7 +122,7 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                     CreatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     UpdatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DeletedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -151,7 +151,7 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                     CreatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     UpdatedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     DeletedUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
-                    RowVersion = table.Column<byte[]>(type: "varbinary(max)", nullable: false)
+                    RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -328,6 +328,22 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                 schema: "marketplace",
                 table: "Tags",
                 column: "UsageCount");
+
+            // Predefined hierarchical taxonomy (docs/13). RowVersion is store-generated.
+            migrationBuilder.InsertData(
+                schema: "marketplace",
+                table: "Categories",
+                columns: ["Id", "Name", "ParentCategoryId", "Slug", "DisplayOrder", "CreatedUtc", "UpdatedUtc", "DeletedUtc"],
+                values: new object[,]
+                {
+                    { new Guid("a1f60d6f-0001-4a10-9c60-000000000001"), "Productivity", null, "productivity", 1, new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), null },
+                    { new Guid("a1f60d6f-0002-4a10-9c60-000000000002"), "Analytics", null, "analytics", 2, new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), null },
+                    { new Guid("a1f60d6f-0003-4a10-9c60-000000000003"), "CRM Integration", null, "crm-integration", 3, new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), null },
+                    { new Guid("a1f60d6f-0004-4a10-9c60-000000000004"), "Security", null, "security", 4, new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), null },
+                    { new Guid("a1f60d6f-0005-4a10-9c60-000000000005"), "Automation", null, "automation", 5, new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), null },
+                    { new Guid("a1f60d6f-0006-4a10-9c60-000000000006"), "AI Tools", null, "ai-tools", 6, new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), null },
+                    { new Guid("a1f60d6f-0007-4a10-9c60-000000000007"), "Data Visualization", null, "data-visualization", 7, new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 7, 16, 0, 0, 0, TimeSpan.Zero), null },
+                });
         }
 
         /// <inheritdoc />

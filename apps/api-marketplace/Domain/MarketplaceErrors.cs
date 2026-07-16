@@ -70,6 +70,14 @@ public static class MarketplaceErrors
         "You cannot review your own listing.");
 
     // Authorization errors
+    public static readonly Error NotAuthorizedForOrganization = Error.Forbidden(
+        "Marketplace.NotAuthorizedForOrganization",
+        "You do not have the required role in this organization.");
+
+    public static readonly Error MissingUserIdentity = Error.Unauthorized(
+        "Marketplace.MissingUserIdentity",
+        "The access token does not carry a resolvable user identity.");
+
     public static readonly Error NotListingOwner = Error.Forbidden(
         "Marketplace.NotListingOwner",
         "You do not have permission to modify this listing.");

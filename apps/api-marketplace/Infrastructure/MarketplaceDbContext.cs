@@ -90,6 +90,13 @@ public sealed class MarketplaceDbContext : DbContext
 
             // Composite index for common queries
             entity.HasIndex(l => new { l.Status, l.IsFeatured, l.AverageRating });
+
+            if (isSqlServer)
+            {
+                entity.Property(l => l.RowVersion).IsRowVersion();
+            }
+
+            entity.HasQueryFilter(l => l.DeletedUtc == null);
         });
 
         // PricingPlan configuration
@@ -127,6 +134,13 @@ public sealed class MarketplaceDbContext : DbContext
             entity.HasIndex(p => p.ListingId);
             entity.HasIndex(p => p.IsActive);
             entity.HasIndex(p => p.StripePriceId);
+
+            if (isSqlServer)
+            {
+                entity.Property(p => p.RowVersion).IsRowVersion();
+            }
+
+            entity.HasQueryFilter(p => p.DeletedUtc == null);
         });
 
         // Category configuration
@@ -148,6 +162,13 @@ public sealed class MarketplaceDbContext : DbContext
 
             entity.HasIndex(c => c.ParentCategoryId);
             entity.HasIndex(c => c.DisplayOrder);
+
+            if (isSqlServer)
+            {
+                entity.Property(c => c.RowVersion).IsRowVersion();
+            }
+
+            entity.HasQueryFilter(c => c.DeletedUtc == null);
         });
 
         // Tag configuration
@@ -171,6 +192,13 @@ public sealed class MarketplaceDbContext : DbContext
                 .IsUnique();
 
             entity.HasIndex(t => t.UsageCount);
+
+            if (isSqlServer)
+            {
+                entity.Property(t => t.RowVersion).IsRowVersion();
+            }
+
+            entity.HasQueryFilter(t => t.DeletedUtc == null);
         });
 
         // Review configuration
@@ -188,6 +216,13 @@ public sealed class MarketplaceDbContext : DbContext
             entity.HasIndex(r => r.ListingId);
             entity.HasIndex(r => r.UserId);
             entity.HasIndex(r => r.Rating);
+
+            if (isSqlServer)
+            {
+                entity.Property(r => r.RowVersion).IsRowVersion();
+            }
+
+            entity.HasQueryFilter(r => r.DeletedUtc == null);
         });
 
         // ListingTag join table
@@ -205,6 +240,35 @@ public sealed class MarketplaceDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(lt => lt.TagId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Match the principals' soft-delete filters (required FK to filtered entities).
+            entity.HasQueryFilter(lt => lt.Listing.DeletedUtc == null && lt.Tag.DeletedUtc == null);
         });
+
+        // SQLite (unit tests) cannot order or compare DateTimeOffset/decimal; store as
+        // UTC ticks and double respectively.
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var dateTimeOffsetConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion
+                .DateTimeOffsetToBinaryConverter();
+            var decimalConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion
+                .CastingConverter<decimal, double>();
+
+            foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+            {
+                foreach (var property in entityType.GetProperties())
+                {
+                    if (property.ClrType == typeof(DateTimeOffset)
+                        || property.ClrType == typeof(DateTimeOffset?))
+                    {
+                        property.SetValueConverter(dateTimeOffsetConverter);
+                    }
+                    else if (property.ClrType == typeof(decimal))
+                    {
+                        property.SetValueConverter(decimalConverter);
+                    }
+                }
+            }
+        }
     }
 }

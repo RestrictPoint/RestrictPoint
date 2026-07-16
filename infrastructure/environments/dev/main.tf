@@ -286,6 +286,20 @@ module "func_marketplace" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
 
+  app_settings = {
+    # Entra External ID token validation (write endpoints; catalog reads are anonymous)
+    "EntraExternalId__TenantSubdomain" = "restrictpointext"
+    "EntraExternalId__TenantId"        = "66162195-1310-42eb-86e5-94dbef0e027c"
+    "EntraExternalId__Audience"        = "13db69ee-e73b-45c6-a7e3-5f08b194094d;api://13db69ee-e73b-45c6-a7e3-5f08b194094d"
+
+    # Managed Identity data access (no secrets)
+    "Sql__ConnectionString"               = "Server=tcp:${module.sql.server_fqdn},1433;Database=${module.sql.database_name};Authentication=Active Directory Default;Encrypt=True;"
+    "ServiceBus__FullyQualifiedNamespace" = "${module.servicebus.namespace_name}.servicebus.windows.net"
+
+    # Identity service for organization role authorization (REST, token passthrough)
+    "Identity__BaseUrl" = "https://${module.func_identity.function_app_hostname}/api/"
+  }
+
   tags = local.tags
 }
 

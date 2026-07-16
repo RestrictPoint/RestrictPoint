@@ -527,87 +527,82 @@
     App: apps/api-marketplace (RestrictPoint.Api.Marketplace)
     Service Bus Topic: MarketplaceEvents
 
-    ✅ PHASE 6 FOUNDATION IMPLEMENTED (2026-07-16):
+    ✅ PHASE 6 IMPLEMENTED + DEPLOYED (2026-07-16):
 
     Architecture:
-        Publisher-centric marketplace for SharePoint/Teams web parts (docs/13)
-        Listings aggregate state with 7-state lifecycle (Draft→Published→Suspended/Deprecated→Removed)
-        ListingStateMachine enforces valid state transitions with Dictionary lookup
-        Review system with 24hr edit window and fraud prevention (no self-review)
-        Dynamic rating aggregation on Review creation
-        Hierarchical category taxonomy with slug-based routing
-        Tag system with usage tracking for trending discovery
-        Multiple pricing plans per listing (Free, OneTimePurchase, MonthlySubscription, AnnualSubscription)
-        Stripe integration via StripePriceId sync for billing
-        LicenseTemplate JSON field on PricingPlan for automatic license provisioning
+        Public commercial surface for SPFx web parts (docs/13). Marketplace does NOT
+        handle payments — pricing metadata only; Billing owns monetization.
+        Catalog reads (list/get/search) anonymous by design; all writes require Entra
+        bearer tokens (AuthenticationMiddleware, same pattern as billing).
+        Cross-context authorization via IOrganizationRoleResolver → Identity /me
+        (REST, token passthrough; fails closed on Identity outage).
 
-    Domain Entities (Phase 6):
-        Listing: Core marketplace aggregate with 7 states (Draft, Published, Suspended, Deprecated, Removed, Rejected, UnderReview)
-            - State machine: Draft→Published/Removed; Published→Suspended/Deprecated/Removed; Suspended→Published/Removed; Deprecated→Removed
-            - Validation: Title 1-256 chars; Publish requires ≥1 active PricingPlan
-            - InstallCount increment, AverageRating/ReviewCount aggregation
-            - RecalculateRating() computes from Reviews collection
-        PricingPlan: Business rules enforced via Create() method
-            - Free: Price must be 0
-            - Subscription: Requires BillingInterval (Monthly/Annual)
-            - TrialDays: 0-365 validation
-            - IsActive flag for soft archive
-        Category: Hierarchical taxonomy (nullable ParentCategoryId)
-            - Slug auto-generation from name
-            - DisplayOrder for UI sorting
-        Tag: Many-to-many with Listing via ListingTag join table
-            - UsageCount tracking for trending
-            - IncrementUsage/DecrementUsage methods
-        Review: User feedback with moderation
-            - Rating 1-5 validation
-            - Comment max 4000 chars
-            - Update() enforces 24hr edit window via (now - CreatedUtc).TotalHours check
-            - IsFlagged for moderation, EditedUtc tracking
+    Domain (docs/13):
+        Listing — 5-state lifecycle Draft→Published→Suspended/Deprecated→Removed;
+            ListingStateMachine transition matrix; Publish requires ≥1 active pricing
+            plan; rating aggregation (RecalculateRating); install count; featured flag
+        PricingPlan — Free/OneTimePurchase/MonthlySubscription/AnnualSubscription;
+            invariants in domain Create() (Free⇒price 0, subscriptions⇒interval,
+            trial 0–365); StripePriceId sync point; LicenseTemplate JSON for issuance
+        Category — predefined hierarchical taxonomy, seeded in migration
+            (Productivity, Analytics, CRM Integration, Security, Automation, AI Tools,
+            Data Visualization); slug generation
+        Tag — get-or-create on listing creation, usage counts for trending; ListingTag
+            join (composite PK, cascade delete)
+        Review — 1–5 rating, one per user per listing (unique index), 24h edit window,
+            IsFlagged moderation, org members cannot review own listing (fraud rule)
 
-    Database (Marketplace schema, migration InitialMarketplaceSchema created but not applied):
-        Listings (Id, ProjectId unique index, Status, AverageRating precision(3,2), composite index on Status+IsFeatured+AverageRating)
-        PricingPlans (ListingId FK, PricingType/BillingInterval as string enum, StripePriceId indexed, LicenseTemplate JSON)
-        Categories (Slug unique index, ParentCategoryId, DisplayOrder)
-        Tags (Name/Slug both unique, UsageCount indexed)
-        Reviews (Composite unique index ListingId+UserId, Rating indexed)
-        ListingTags (Composite PK ListingId+TagId, cascade delete)
-        OutboxMessages
-        MI DB user: pending creation (will be rp-dev-func-marketplace db_datareader+db_datawriter WITH SID)
+    Visibility rules (docs/13 state table): Published + Deprecated visible in catalog;
+        search returns Published only; Draft/Suspended/Removed hidden (404, no
+        existence disclosure to non-members on write paths).
 
-    APIs (handlers removed for MVP — Phase 6.1 implementation pending):
-        Health endpoints only:
-        GET  /health/live  → anonymous, {status:"healthy", service:"marketplace"}
-        GET  /health/ready → anonymous, {status:"ready", service:"marketplace"}
+    Database (marketplace schema, migration InitialMarketplaceSchema applied):
+        Listings (ProjectId unique; composite (Status,IsFeatured,AverageRating);
+            rowversion; soft-delete query filters)
+        PricingPlans, Categories (7 seeded), Tags, Reviews ((ListingId,UserId) unique),
+        ListingTags, OutboxMessages
+        MI DB user: rp-dev-func-marketplace (db_datareader + db_datawriter, WITH SID
+            0x2A30A4F04E5D0F4B839069AABC1918B8 from MI appId f0a4302a-...)
 
-    Events (catalog — Phase 6.1):
-        ListingCreated, ListingPublished, ListingSuspended, ListingDeprecated, ListingRemoved,
-        PricingPlanAdded, PricingPlanUpdated, ReviewCreated, ReviewUpdated
+    APIs (implemented, docs/13 + docs/16 envelope):
+        GET  /v1/marketplace/listings          → anonymous; filters categoryId/tag/
+                                                 organizationId/featured, paging
+        GET  /v1/marketplace/listings/{id}     → anonymous; detail + active pricing +
+                                                 tags + 10 recent unflagged reviews
+        GET  /v1/marketplace/search            → anonymous; q/categoryId/tag; ranking
+                                                 featured > rating > installs > recency
+        POST /v1/marketplace/listings          → 201; Owner/Admin/Developer in org
+        POST /v1/marketplace/listings/{id}/publish → Owner/Admin; needs active pricing
+        POST /v1/marketplace/listings/{id}/pricing → 201; Owner/Admin/Developer
+        POST /v1/marketplace/listings/{id}/review  → 201; authed non-member, published
+                                                 listings only, one per user
 
-    Events (consumed — Phase 6.1):
-        ProjectArchived/ProjectDeleted → unpublish/remove listings
-        SubscriptionActivated → install count
+    Events (published via outbox → MarketplaceEvents, docs/20):
+        MarketplaceListingCreated v1.0, MarketplaceListingPublished v1.0,
+        PricingModelCreated v1.0
+    Events (catalog, later): MarketplaceListingUpdated/Unpublished/Removed,
+        PricingModelUpdated
 
-    Functions (MVP — Phase 6.1 pending):
-        HealthLive/HealthReady only; handlers deferred to avoid API compatibility issues
+    Functions:
+        CreateListing, PublishListing, AddPricingPlan, SubmitReview,
+        ListListings, GetListing, SearchListings, DispatchOutbox (timer 30s),
+        HealthLive/HealthReady
+        Anonymous allowlist: HealthLive, HealthReady, ListListings, GetListing,
+        SearchListings
 
-    Shared package usage:
-        RestrictPoint.Common (Result<T>, Error.NotFound/Conflict/Validation/Forbidden)
-        RestrictPoint.Database (AuditingSaveChangesInterceptor, OutboxMessage, BaseEntity)
-        Domain errors use static factory methods (Error.NotFound vs new Error)
+    Search: SQL LIKE over Title/Description (SQL Server CI collation); Azure
+        Cognitive Search deferred per dev SKU strategy (docs/08).
 
-    Tests (created but not yet run — Phase 6.1):
-        tests/marketplace/Domain: 31 test cases (ListingTests, ListingStateMachineTests, PricingPlanTests, ReviewTests)
-        tests/marketplace/Application: Integration tests with SQLite in-memory, TestOutboxWriter, reflection-based private method testing
-        Not executed: handler tests require completion of Phase 6.1 API layer
+    Tests: tests/marketplace (82 passing — state machine matrix, domain invariants,
+        handler authorization matrix, identity-outage fail-closed, tag reuse,
+        rating aggregation, visibility rules, no-existence-disclosure)
 
-    Next Steps (Phase 6.1 — deferred pending API standardization):
-        1. Complete handler implementations matching established billing/licensing pattern
-        2. Run marketplace tests and verify domain logic
-        3. Apply migration InitialMarketplaceSchema
-        4. Provision MI database user rp-dev-func-marketplace
-        5. Deploy to Azure Functions
-        6. Implement featured listing curation workflow
-        7. Add full-text search (Azure Cognitive Search or SQL Server FTS)
+    Deployment notes (2026-07-16):
+        functionapp TF module: dotnet-isolated 9.0 stack + lifecycle ignore_changes on
+        WEBSITE_RUN_FROM_PACKAGE (Terraform apply had stripped CLI-set deployment
+        packages, taking the fleet down; all four services redeployed).
+        Deploy with `func azure functionapp publish <app> --dotnet-isolated` — NEVER
+        Compress-Archive (backslash zip entries break Linux extraction → 0 functions).
 
 ---
 

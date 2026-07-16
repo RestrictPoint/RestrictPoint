@@ -1,150 +1,141 @@
-using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
-using RestrictPoint.Api.Marketplace.Application.CreateListing;
 using RestrictPoint.Api.Marketplace.Application.PublishListing;
 using RestrictPoint.Api.Marketplace.Domain;
 using RestrictPoint.Api.Marketplace.Infrastructure;
-using RestrictPoint.Auth;
 using RestrictPoint.Common;
-using RestrictPoint.Tests.Shared;
+using RestrictPoint.Database;
+using Xunit;
 
-namespace RestrictPoint.Tests.Marketplace.Application;
+namespace RestrictPoint.Api.Marketplace.Tests.Application;
 
 public sealed class PublishListingHandlerTests : IDisposable
 {
-    private readonly MarketplaceDbContext _db;
-    private readonly TestOutboxWriter _outbox;
-    private readonly StubOrganizationRoleResolver _roleResolver;
-    private readonly PublishListingHandler _handler;
+    private const string BearerToken = "test-token";
+
+    private readonly TestTimeProvider _time = new();
+    private readonly TestDatabase _database;
+    private readonly StubRoleResolver _roles = new();
+    private readonly Guid _organizationId = Guid.NewGuid();
 
     public PublishListingHandlerTests()
     {
-        var options = new DbContextOptionsBuilder<MarketplaceDbContext>()
-            .UseSqlite("Data Source=:memory:")
-            .Options;
-
-        _db = new MarketplaceDbContext(options);
-        _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
-
-        _outbox = new TestOutboxWriter();
-        _roleResolver = new StubOrganizationRoleResolver();
-        _handler = new PublishListingHandler(_db, _roleResolver, _outbox, NullLogger<PublishListingHandler>.Instance);
+        _database = new TestDatabase(_time);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_WithValidListingAndPricing_PublishesListing()
+    public void Dispose() => _database.Dispose();
+
+    private static RequestContext Context() => new()
     {
-        var organizationId = Guid.NewGuid();
-        var listing = await SeedDraftListingWithPricingAsync(organizationId);
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", organizationId);
+        CorrelationId = "corr-publish",
+        ExternalObjectId = Guid.NewGuid().ToString(),
+    };
 
-        _roleResolver.SetRole(OrganizationRole.Owner);
+    private PublishListingHandler CreateHandler(MarketplaceDbContext context) =>
+        new(context, _roles, new OutboxWriter(context), _time);
 
-        var result = await ExecuteHandlerAsync(principal, listing.Id);
-
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Status.Should().Be("Published");
-
-        var updated = await _db.Listings.FindAsync(listing.Id);
-        updated!.Status.Should().Be(ListingStatus.Published);
-
-        _outbox.Messages.Should().ContainSingle();
-        _outbox.Messages[0].EventType.Should().Be("ListingPublished");
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_WithoutPricingPlan_ReturnsFailure()
+    private Guid SeedDraftListing(bool withPricing)
     {
-        var organizationId = Guid.NewGuid();
-        var listing = await SeedDraftListingAsync(organizationId);
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", organizationId);
-
-        _roleResolver.SetRole(OrganizationRole.Owner);
-
-        var result = await ExecuteHandlerAsync(principal, listing.Id);
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Contain("PublishFailed");
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_WhenNotOwner_ReturnsNotListingOwner()
-    {
-        var organizationId = Guid.NewGuid();
-        var listing = await SeedDraftListingWithPricingAsync(organizationId);
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", Guid.NewGuid()); // Different org
-
-        _roleResolver.SetRole(OrganizationRole.Member);
-
-        var result = await ExecuteHandlerAsync(principal, listing.Id);
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Should().Be(MarketplaceErrors.NotListingOwner);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_WhenListingNotFound_ReturnsListingNotFound()
-    {
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", Guid.NewGuid());
-
-        _roleResolver.SetRole(OrganizationRole.Owner);
-
-        var result = await ExecuteHandlerAsync(principal, Guid.NewGuid());
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Should().Be(MarketplaceErrors.ListingNotFound);
-    }
-
-    private async Task<Listing> SeedDraftListingAsync(Guid organizationId)
-    {
-        var category = Category.Create("Productivity", null, 1);
-        _db.Categories.Add(category);
-        await _db.SaveChangesAsync();
-
+        using var context = _database.CreateContext();
         var listing = Listing.Create(
-            Guid.NewGuid(),
-            organizationId,
-            "Test Listing",
-            "Description",
-            category.Id,
-            Guid.NewGuid());
+            Guid.NewGuid(), _organizationId, "Dashboard", "Description",
+            Guid.NewGuid(), Guid.NewGuid());
 
-        _db.Listings.Add(listing);
-        await _db.SaveChangesAsync();
-        return listing;
+        if (withPricing)
+        {
+            context.PricingPlans.Add(PricingPlan.Create(
+                listing.Id, "Standard", PricingType.MonthlySubscription, 9.99m, "USD",
+                BillingInterval.Monthly, 14, null));
+        }
+
+        context.Listings.Add(listing);
+        context.SaveChanges();
+        return listing.Id;
     }
 
-    private async Task<Listing> SeedDraftListingWithPricingAsync(Guid organizationId)
+    [Fact]
+    public async Task Admin_publishes_draft_listing_with_pricing()
     {
-        var listing = await SeedDraftListingAsync(organizationId);
+        _roles.SetRole(_organizationId, "Admin");
+        var listingId = SeedDraftListing(withPricing: true);
+        using var context = _database.CreateContext();
 
-        var plan = PricingPlan.Create(
-            listing.Id,
-            "Standard",
-            PricingType.MonthlySubscription,
-            29.99m,
-            "USD",
-            BillingInterval.Monthly,
-            14,
-            null);
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, listingId, CancellationToken.None);
 
-        _db.PricingPlans.Add(plan);
-        await _db.SaveChangesAsync();
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Published", result.Value.Status);
 
-        return listing;
+        using var verification = _database.CreateContext();
+        Assert.Equal(1, await verification.OutboxMessages
+            .CountAsync(m => m.EventType == "MarketplaceListingPublished"));
     }
 
-    private Task<Result<ListingDto>> ExecuteHandlerAsync(RestrictPointPrincipal principal, Guid listingId)
+    [Fact]
+    public async Task Publish_without_active_pricing_plan_is_rejected()
     {
-        var method = _handler.GetType().GetMethod("ExecuteAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        return (Task<Result<ListingDto>>)method!.Invoke(_handler, [principal, listingId, CancellationToken.None])!;
+        _roles.SetRole(_organizationId, "Owner");
+        var listingId = SeedDraftListing(withPricing: false);
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, listingId, CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.CannotPublishWithoutPricing.Code, result.Error!.Code);
     }
 
-    public void Dispose()
+    [Fact]
+    public async Task Non_member_receives_not_found()
     {
-        _db.Database.CloseConnection();
-        _db.Dispose();
+        var listingId = SeedDraftListing(withPricing: true);
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, listingId, CancellationToken.None);
+
+        // No existence disclosure to non-members.
+        Assert.Equal(MarketplaceErrors.ListingNotFound.Code, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Developer_role_cannot_publish()
+    {
+        _roles.SetRole(_organizationId, "Developer");
+        var listingId = SeedDraftListing(withPricing: true);
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, listingId, CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.NotAuthorizedForOrganization.Code, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Unknown_listing_returns_not_found()
+    {
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.ListingNotFound.Code, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Already_published_listing_cannot_be_republished()
+    {
+        _roles.SetRole(_organizationId, "Owner");
+        var listingId = SeedDraftListing(withPricing: true);
+
+        using (var context = _database.CreateContext())
+        {
+            await CreateHandler(context).HandleAsync(
+                Context(), BearerToken, listingId, CancellationToken.None);
+        }
+
+        using var second = _database.CreateContext();
+        var result = await CreateHandler(second).HandleAsync(
+            Context(), BearerToken, listingId, CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.InvalidStateTransition.Code, result.Error!.Code);
     }
 }

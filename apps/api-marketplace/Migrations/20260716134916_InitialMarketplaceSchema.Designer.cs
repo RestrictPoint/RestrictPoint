@@ -12,7 +12,7 @@ using RestrictPoint.Api.Marketplace.Infrastructure;
 namespace RestrictPoint.Api.Marketplace.Migrations
 {
     [DbContext(typeof(MarketplaceDbContext))]
-    [Migration("20260716132809_InitialMarketplaceSchema")]
+    [Migration("20260716134916_InitialMarketplaceSchema")]
     partial class InitialMarketplaceSchema
     {
         /// <inheritdoc />
@@ -50,8 +50,10 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
                         .IsRequired()
-                        .HasColumnType("varbinary(max)");
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Slug")
                         .IsRequired()
@@ -120,8 +122,10 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                         .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
                         .IsRequired()
-                        .HasColumnType("varbinary(max)");
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Screenshots")
                         .HasColumnType("nvarchar(max)");
@@ -224,8 +228,10 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
                         .IsRequired()
-                        .HasColumnType("varbinary(max)");
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("StripePriceId")
                         .HasMaxLength(128)
@@ -277,8 +283,10 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                         .HasColumnType("int");
 
                     b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
                         .IsRequired()
-                        .HasColumnType("varbinary(max)");
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateTimeOffset>("UpdatedUtc")
                         .HasColumnType("datetimeoffset");
@@ -318,8 +326,10 @@ namespace RestrictPoint.Api.Marketplace.Migrations
                         .HasColumnType("nvarchar(64)");
 
                     b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
                         .IsRequired()
-                        .HasColumnType("varbinary(max)");
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Slug")
                         .IsRequired()

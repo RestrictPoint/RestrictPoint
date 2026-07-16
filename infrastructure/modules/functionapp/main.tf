@@ -81,7 +81,7 @@ resource "azurerm_linux_function_app" "main" {
 
     # Application stack
     application_stack {
-      dotnet_version              = "8.0"
+      dotnet_version              = "9.0"
       use_dotnet_isolated_runtime = true
     }
 
@@ -96,6 +96,13 @@ resource "azurerm_linux_function_app" "main" {
 
   # HTTPS only
   https_only = true
+
+  # Zip deployments set WEBSITE_RUN_FROM_PACKAGE outside Terraform; never strip it.
+  lifecycle {
+    ignore_changes = [
+      app_settings["WEBSITE_RUN_FROM_PACKAGE"],
+    ]
+  }
 
   tags = var.tags
 }

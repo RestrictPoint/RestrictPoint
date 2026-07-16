@@ -1,164 +1,172 @@
-using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using RestrictPoint.Api.Marketplace.Application.CreateListing;
+using RestrictPoint.Api.Marketplace.Contracts;
 using RestrictPoint.Api.Marketplace.Domain;
 using RestrictPoint.Api.Marketplace.Infrastructure;
-using RestrictPoint.Auth;
 using RestrictPoint.Common;
-using RestrictPoint.Messaging;
-using RestrictPoint.Tests.Shared;
+using RestrictPoint.Database;
+using Xunit;
 
-namespace RestrictPoint.Tests.Marketplace.Application;
+namespace RestrictPoint.Api.Marketplace.Tests.Application;
 
 public sealed class CreateListingHandlerTests : IDisposable
 {
-    private readonly MarketplaceDbContext _db;
-    private readonly TestOutboxWriter _outbox;
-    private readonly StubOrganizationRoleResolver _roleResolver;
-    private readonly CreateListingHandler _handler;
+    private const string BearerToken = "test-token";
+
+    private readonly TestTimeProvider _time = new();
+    private readonly TestDatabase _database;
+    private readonly StubRoleResolver _roles = new();
+    private readonly Guid _organizationId = Guid.NewGuid();
+    private readonly Guid _categoryId;
 
     public CreateListingHandlerTests()
     {
-        var options = new DbContextOptionsBuilder<MarketplaceDbContext>()
-            .UseSqlite("Data Source=:memory:")
-            .Options;
-
-        _db = new MarketplaceDbContext(options);
-        _db.Database.OpenConnection();
-        _db.Database.EnsureCreated();
-
-        _outbox = new TestOutboxWriter();
-        _roleResolver = new StubOrganizationRoleResolver();
-        _handler = new CreateListingHandler(_db, _roleResolver, _outbox, NullLogger<CreateListingHandler>.Instance);
+        _database = new TestDatabase(_time);
+        _categoryId = SeedCategory();
     }
 
-    [Fact]
-    public async Task ExecuteAsync_WithValidData_CreatesListing()
+    public void Dispose() => _database.Dispose();
+
+    private Guid SeedCategory()
     {
-        var organizationId = Guid.NewGuid();
-        var projectId = Guid.NewGuid();
-        var categoryId = await SeedCategoryAsync();
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", organizationId);
-
-        _roleResolver.SetRole(OrganizationRole.Owner);
-
-        var request = new CreateListingRequest(
-            organizationId,
-            projectId,
-            "My SPFx Web Part",
-            "A great web part for productivity",
-            categoryId,
-            Guid.NewGuid());
-
-        var result = await ExecuteHandlerAsync(principal, request);
-
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().NotBeNull();
-        result.Value.Title.Should().Be("My SPFx Web Part");
-        result.Value.Status.Should().Be("Draft");
-
-        var listing = await _db.Listings.FirstOrDefaultAsync(l => l.ProjectId == projectId);
-        listing.Should().NotBeNull();
-        listing!.Title.Should().Be("My SPFx Web Part");
-
-        _outbox.Messages.Should().ContainSingle();
-        _outbox.Messages[0].EventType.Should().Be("ListingCreated");
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_WhenNotOwnerOrAdmin_ReturnsForbidden()
-    {
-        var organizationId = Guid.NewGuid();
-        var categoryId = await SeedCategoryAsync();
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", organizationId);
-
-        _roleResolver.SetRole(OrganizationRole.Member); // Not owner/admin
-
-        var request = new CreateListingRequest(
-            organizationId,
-            Guid.NewGuid(),
-            "My Web Part",
-            "Description",
-            categoryId,
-            Guid.NewGuid());
-
-        var result = await ExecuteHandlerAsync(principal, request);
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Contain("Forbidden");
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_WhenDuplicateProject_ReturnsListingAlreadyExists()
-    {
-        var organizationId = Guid.NewGuid();
-        var projectId = Guid.NewGuid();
-        var categoryId = await SeedCategoryAsync();
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", organizationId);
-
-        _roleResolver.SetRole(OrganizationRole.Owner);
-
-        // Create first listing
-        var existingListing = Listing.Create(projectId, organizationId, "Existing", "Desc", categoryId, Guid.NewGuid());
-        _db.Listings.Add(existingListing);
-        await _db.SaveChangesAsync();
-
-        // Try to create duplicate
-        var request = new CreateListingRequest(
-            organizationId,
-            projectId, // Same project
-            "Duplicate",
-            "Description",
-            categoryId,
-            Guid.NewGuid());
-
-        var result = await ExecuteHandlerAsync(principal, request);
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Should().Be(MarketplaceErrors.ListingAlreadyExists);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_WhenCategoryNotFound_ReturnsCategoryNotFound()
-    {
-        var organizationId = Guid.NewGuid();
-        var principal = new RestrictPointPrincipal(Guid.NewGuid(), "test@example.com", organizationId);
-
-        _roleResolver.SetRole(OrganizationRole.Owner);
-
-        var request = new CreateListingRequest(
-            organizationId,
-            Guid.NewGuid(),
-            "My Web Part",
-            "Description",
-            Guid.NewGuid(), // Non-existent category
-            Guid.NewGuid());
-
-        var result = await ExecuteHandlerAsync(principal, request);
-
-        result.IsFailure.Should().BeTrue();
-        result.Error.Should().Be(MarketplaceErrors.CategoryNotFound);
-    }
-
-    private async Task<Guid> SeedCategoryAsync()
-    {
+        using var context = _database.CreateContext();
         var category = Category.Create("Productivity", null, 1);
-        _db.Categories.Add(category);
-        await _db.SaveChangesAsync();
+        context.Categories.Add(category);
+        context.SaveChanges();
         return category.Id;
     }
 
-    private Task<Result<ListingDto>> ExecuteHandlerAsync(RestrictPointPrincipal principal, CreateListingRequest request)
+    private static RequestContext Context() => new()
     {
-        // Reflection to call private ExecuteAsync
-        var method = _handler.GetType().GetMethod("ExecuteAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        return (Task<Result<ListingDto>>)method!.Invoke(_handler, [principal, request, CancellationToken.None])!;
+        CorrelationId = "corr-create-listing",
+        ExternalObjectId = Guid.NewGuid().ToString(),
+    };
+
+    private CreateListingHandler CreateHandler(MarketplaceDbContext context) =>
+        new(context, _roles, new OutboxWriter(context), _time);
+
+    private CreateListingRequest Request(Guid? projectId = null) => new()
+    {
+        ProjectId = projectId ?? Guid.NewGuid(),
+        OrganizationId = _organizationId,
+        Title = "Analytics Dashboard",
+        Description = "A powerful analytics dashboard.",
+        CategoryId = _categoryId,
+        WebPartGuid = Guid.NewGuid(),
+        LogoUrl = "https://cdn.restrictpoint.com/logo.png",
+        Tags = ["SPFx", "Dashboard"],
+    };
+
+    [Fact]
+    public async Task Member_with_developer_role_creates_draft_listing_with_tags_and_event()
+    {
+        _roles.SetRole(_organizationId, "Developer");
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, Request(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Draft", result.Value.Status);
+        Assert.Equal(2, result.Value.Tags.Count);
+
+        using var verification = _database.CreateContext();
+        var listing = await verification.Listings.Include(l => l.Tags).SingleAsync();
+        Assert.Equal(ListingStatus.Draft, listing.Status);
+        Assert.Equal(2, listing.Tags.Count);
+        Assert.Equal(1, await verification.OutboxMessages
+            .CountAsync(m => m.EventType == "MarketplaceListingCreated"));
     }
 
-    public void Dispose()
+    [Fact]
+    public async Task Non_member_is_rejected()
     {
-        _db.Database.CloseConnection();
-        _db.Dispose();
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, Request(), CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.NotAuthorizedForOrganization.Code, result.Error!.Code);
+        Assert.Equal(0, await context.Listings.CountAsync());
+    }
+
+    [Fact]
+    public async Task Member_without_publishing_role_is_rejected()
+    {
+        _roles.SetRole(_organizationId, "Viewer");
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, Request(), CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.NotAuthorizedForOrganization.Code, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Identity_outage_fails_closed()
+    {
+        _roles.FailNextCall = true;
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, Request(), CancellationToken.None);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(0, await context.Listings.CountAsync());
+    }
+
+    [Fact]
+    public async Task Unknown_category_is_rejected()
+    {
+        _roles.SetRole(_organizationId, "Owner");
+        using var context = _database.CreateContext();
+
+        var result = await CreateHandler(context).HandleAsync(
+            Context(), BearerToken, Request() with { CategoryId = Guid.NewGuid() }, CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.CategoryNotFound.Code, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Duplicate_project_listing_is_rejected()
+    {
+        _roles.SetRole(_organizationId, "Owner");
+        var projectId = Guid.NewGuid();
+
+        using (var context = _database.CreateContext())
+        {
+            var first = await CreateHandler(context).HandleAsync(
+                Context(), BearerToken, Request(projectId), CancellationToken.None);
+            Assert.True(first.IsSuccess);
+        }
+
+        using var second = _database.CreateContext();
+        var result = await CreateHandler(second).HandleAsync(
+            Context(), BearerToken, Request(projectId), CancellationToken.None);
+
+        Assert.Equal(MarketplaceErrors.ListingAlreadyExists.Code, result.Error!.Code);
+    }
+
+    [Fact]
+    public async Task Existing_tags_are_reused_and_usage_incremented()
+    {
+        _roles.SetRole(_organizationId, "Owner");
+
+        using (var context = _database.CreateContext())
+        {
+            await CreateHandler(context).HandleAsync(
+                Context(), BearerToken, Request(), CancellationToken.None);
+        }
+
+        using (var context = _database.CreateContext())
+        {
+            await CreateHandler(context).HandleAsync(
+                Context(), BearerToken, Request(), CancellationToken.None);
+        }
+
+        using var verification = _database.CreateContext();
+        Assert.Equal(2, await verification.Tags.CountAsync()); // No duplicate tag rows.
+        var tag = await verification.Tags.SingleAsync(t => t.Name == "SPFx");
+        Assert.Equal(2, tag.UsageCount);
     }
 }
