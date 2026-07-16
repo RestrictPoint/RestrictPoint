@@ -241,7 +241,11 @@
         RestrictPoint API: appId 13db69ee-e73b-45c6-a7e3-5f08b194094d (audience for all API JWTs)
             Scope: api://13db69ee-e73b-45c6-a7e3-5f08b194094d/access_as_user (v2 tokens)
         Restrict Point Portal (SPA): c607b690-8e90-4e29-8c9a-03960055e726 (wired to API scope;
-            admin consent pending — needs one-time grant in admin center)
+            access_as_user admin-consented — verified by admin in portal 2026-07-16.
+            Note: SP cannot read oauth2PermissionGrants (403 — lacks Directory.Read.All),
+            so consent state is not automatable; check App registration → API permissions)
+        SP object ids in external tenant: portal f5eda404-2b48-4fae-b4b8-2885e6d2660c,
+            API 2ad01401-cea5-45bf-939d-766d5bf5149a
 
     Database (SQL schemas Identity + Organizations, EF Core migration InitialIdentitySchema applied):
         Identity.Users (JIT-provisioned, unique ExternalProvider+ExternalId)
@@ -712,43 +716,63 @@
 
 ## SDK / Telemetry
 
-    Packages: packages/sdk-core, packages/sdk-spfx
-    Service Bus Topics: telemetry (7-day retention)
+    Packages: packages/sdk-core (@restrictpoint/sdk-core), packages/sdk-spfx (@restrictpoint/sdk-spfx)
     SDK hides all licensing complexity — no manual API calls by developers.
 
-    Database:
-        (none owned; writes flow to Licensing.Installations and Analytics.UsageEvents via events)
+    ✅ PHASE 7 (docs/18 "Phase 6 — SDK Development") IMPLEMENTED 2026-07-16:
 
-    APIs:
-        POST /v1/sdk/bootstrap           (<150ms target)
-        POST /v1/sdk/telemetry           (batch ingestion)
+    sdk-core (pure TypeScript, no React/SPFx deps — docs/14 core layer):
+        base64url.ts — RFC 4648 §5 helpers
+        jws.ts       — JWS compact decode; ES256 enforced at decode time (algorithm
+                       substitution rejected); P-1363 64-byte signature required
+        crypto.ts    — WebCrypto ECDSA P-256/SHA-256 verify (Key Vault's P-1363 output
+                       is WebCrypto's native format — no conversion); nonce generation
+        keyset.ts    — KeySetResolver: JWKS by kid, 24h cache, one forced refresh on
+                       unknown kid (rotation), imported CryptoKeys memoized
+        cache.ts     — LayeredCache (memory → localStorage, TTL envelopes, degrades
+                       storage-less); keys rp_license_{projectId} / rp_jwks /
+                       rp_install_{scope}; TTLs 12h license / 24h keys (docs/10+14)
+        validator.ts — validateOffline: decode → signature → tenant/project/webPart
+                       binding (case-insensitive GUIDs) → expiry + grace (default 7d,
+                       features stay enabled in grace); never throws; nothing leaks
+                       from an unverified payload
+        api.ts       — LicensingApiClient (validate + JWKS; docs/16 envelope parsing)
+        telemetry.ts — TelemetryQueue: bounded (100), batched (20), injectable
+                       transport, never throws into host
+        client.ts    — RestrictPointClient boot: cache → offline crypto → background
+                       online refresh; online authoritative when offline fails;
+                       blocked states never cached (recovery ≠ cache expiry);
+                       replay fields (nonce + timestampUtc) on every online call
 
-    Events (published):
-        SDKInstalled
-        SDKInitialized
-        SDKValidationRequested
-        SDKValidationCached
-        SDKValidationFailed
-        SDKVersionReported
-        FeatureUsed
-        ApplicationStarted
-        ApplicationErrorReported
-        InstallationHeartbeatReceived
-        SDKConfigurationRetrieved
-        SDKConfigurationFailed
+    sdk-spfx (React layer, peer react >=17, no @microsoft/sp-* dependency):
+        context.ts  — resolveSpfxContext (structural SpfxHostContext: pageContext.
+                      aadInfo.tenantId + site.id), resolveInstallationId (persistent
+                      uuid per tenant+webPart, sliding 24h)
+        provider.ts — <RestrictPoint> wrapper + RestrictPointContext; failure-state
+                      UI matrix (docs/14): blocked notice, grace banner + children,
+                      overridable via blockedFallback/graceBanner/loadingFallback
+        hooks: useRestrictPoint, useLicense (state + refresh), useFeature, useEntitlements
 
-    Functions:
-        BootstrapSdk
-        IngestTelemetry
+    Licensing additions for the SDK:
+        GET /v1/licenses/keys — anonymous RFC 7517 JWKS (KeySetFunctions), enabled
+        P-256 key versions from Key Vault, 24h server cache + Cache-Control 1h.
+        DEPLOYED + verified live (kid 04c83fcab2974a7e8bbaef36178d0ec7).
+        SP note: ILicenseKeySetProvider / KeyVaultLicenseKeySetProvider.
 
-    Dependencies:
-        Licensing (validation)
-        Projects (configuration)
+    Tests: packages/sdk-core/tests (42) + packages/sdk-spfx/tests (3) — real WebCrypto
+        keys/signatures: tampered payload, key substitution (same kid, different key),
+        unknown kid after refresh, fail-closed without key material, binding matrix,
+        grace/expiry math, lifetime licenses, offline mode, revocation-overrides-cache,
+        replay fields, bounded telemetry.
 
-    Shared Contracts:
-        RestrictPointClientOptions
-        SpfxLicenseContext
-        LicenseValidationResponse
+    Contracts (packages/contracts): LicenseValidationRequest (+nonce/timestampUtc/
+        sdkVersion), LicenseTokenPayload (JWS claims), LicenseJwk/LicenseJwks.
+
+    Samples: samples/README.md — SPFx wrapper + core-only usage.
+
+    Deferred (later phases): SDK telemetry ingestion endpoint (POST /v1/sdk/telemetry —
+        transport is injectable and disabled by default), bundle obfuscation/integrity
+        checks, npm publishing (packages private until launch).
 
 ---
 

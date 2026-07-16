@@ -35,7 +35,7 @@ builder.Services.ConfigureFunctionsApplicationInsights();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(new AuthenticationMiddlewareOptions
 {
-    AnonymousFunctions = ["HealthLive", "HealthReady", "ValidateLicense"],
+    AnonymousFunctions = ["HealthLive", "HealthReady", "ValidateLicense", "GetLicenseKeys"],
 });
 
 var credential = new DefaultAzureCredential();
@@ -76,6 +76,9 @@ builder.Services.AddSingleton<ILicenseSigner>(provider =>
 });
 builder.Services.AddSingleton<ILicensePublicKeyProvider>(provider =>
     new KeyVaultLicensePublicKeyProvider(provider.GetRequiredService<KeyClient>(), signingKeyName));
+builder.Services.AddSingleton<ILicenseKeySetProvider>(provider =>
+    new KeyVaultLicenseKeySetProvider(
+        provider.GetRequiredService<KeyClient>(), signingKeyName, provider.GetRequiredService<TimeProvider>()));
 builder.Services.AddSingleton<LicenseTokenService>();
 
 // --- Messaging (Managed Identity) -------------------------------------------------------
