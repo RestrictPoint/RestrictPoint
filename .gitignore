@@ -32,3 +32,7 @@ obj/
 Thumbs.db
 .DS_Store
 *.tfplan
+
+# Terraform plan files (may contain sensitive values)
+*.tfplan
+tfplan
