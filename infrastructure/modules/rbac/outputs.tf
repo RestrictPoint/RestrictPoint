@@ -28,7 +28,7 @@ output "appconfig_data_reader_assignments" {
   value       = { for k, v in azurerm_role_assignment.appconfig_data_reader : k => v.id }
 }
 
-output "redis_contributor_assignments" {
-  description = "Redis Cache Contributor role assignment IDs."
-  value       = { for k, v in azurerm_role_assignment.redis_contributor : k => v.id }
+output "redis_data_contributor_assignments" {
+  description = "Redis Data Contributor access policy assignment IDs."
+  value       = { for k, v in azurerm_redis_cache_access_policy_assignment.data_contributor : k => v.id }
 }

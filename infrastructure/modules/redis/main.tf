@@ -8,14 +8,17 @@ resource "azurerm_redis_cache" "main" {
 
   # Basic/Standard: no redis config; Premium: enable persistence
   redis_configuration {
-    maxmemory_policy               = "volatile-lru" # Evict keys with TTL when memory limit reached
-    
+    maxmemory_policy = "volatile-lru" # Evict keys with TTL when memory limit reached
+
+    # Microsoft Entra token-based authentication (Managed Identity data-plane access)
+    active_directory_authentication_enabled = var.entra_authentication_enabled
+
     # Premium-only settings (ignored in Basic/Standard)
-    aof_backup_enabled             = var.sku_name == "Premium" ? var.enable_aof_backup : null
+    aof_backup_enabled              = var.sku_name == "Premium" ? var.enable_aof_backup : null
     aof_storage_connection_string_0 = var.sku_name == "Premium" && var.enable_aof_backup ? var.aof_storage_connection_string : null
-    rdb_backup_enabled             = var.sku_name == "Premium" ? var.enable_rdb_backup : null
-    rdb_backup_frequency           = var.sku_name == "Premium" && var.enable_rdb_backup ? var.rdb_backup_frequency : null
-    rdb_storage_connection_string  = var.sku_name == "Premium" && var.enable_rdb_backup ? var.rdb_storage_connection_string : null
+    rdb_backup_enabled              = var.sku_name == "Premium" ? var.enable_rdb_backup : null
+    rdb_backup_frequency            = var.sku_name == "Premium" && var.enable_rdb_backup ? var.rdb_backup_frequency : null
+    rdb_storage_connection_string   = var.sku_name == "Premium" && var.enable_rdb_backup ? var.rdb_storage_connection_string : null
   }
 
   # TLS 1.2 minimum

@@ -3,10 +3,10 @@ resource "azurerm_servicebus_namespace" "main" {
   location            = var.location
   resource_group_name = var.resource_group_name
   sku                 = var.sku # Standard (dev) or Premium (prod)
-  
+
   # Premium-only features (ignored in Standard)
-  capacity                      = var.sku == "Premium" ? var.capacity : null
-  premium_messaging_partitions  = var.sku == "Premium" ? var.premium_messaging_partitions : null
+  capacity                     = var.sku == "Premium" ? var.capacity : null
+  premium_messaging_partitions = var.sku == "Premium" ? var.premium_messaging_partitions : null
 
   local_auth_enabled = false # Use Managed Identity only
 

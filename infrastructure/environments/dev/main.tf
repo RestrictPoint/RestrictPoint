@@ -73,6 +73,7 @@ module "redis" {
   family              = "C"
   capacity            = 0 # C0 = 250MB
 
+  entra_authentication_enabled  = true # Managed Identity data-plane auth
   public_network_access_enabled = true # Dev: public with firewall, Prod: private endpoint
 
   tags = local.tags
@@ -152,6 +153,18 @@ module "func_identity" {
   resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1" # Consumption
+
+  app_settings = {
+    # Entra External ID token validation (Phase 3 Identity System)
+    "EntraExternalId__TenantSubdomain" = "restrictpointext"
+    "EntraExternalId__TenantId"        = "66162195-1310-42eb-86e5-94dbef0e027c"
+    "EntraExternalId__Audience"        = "13db69ee-e73b-45c6-a7e3-5f08b194094d;api://13db69ee-e73b-45c6-a7e3-5f08b194094d"
+
+    # Managed Identity data access (no secrets)
+    "Sql__ConnectionString"               = "Server=tcp:${module.sql.server_fqdn},1433;Database=${module.sql.database_name};Authentication=Active Directory Default;Encrypt=True;"
+    "ServiceBus__FullyQualifiedNamespace" = "${module.servicebus.namespace_name}.servicebus.windows.net"
+    "Redis__HostName"                     = module.redis.hostname
+  }
 
   tags = local.tags
 }

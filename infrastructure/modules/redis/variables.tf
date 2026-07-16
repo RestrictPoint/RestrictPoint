@@ -3,6 +3,12 @@ variable "redis_name" {
   type        = string
 }
 
+variable "entra_authentication_enabled" {
+  description = "Enable Microsoft Entra token-based authentication for data-plane access."
+  type        = bool
+  default     = true
+}
+
 variable "location" {
   description = "Azure region."
   type        = string

@@ -56,6 +56,7 @@ variable "topics" {
   description = "List of Service Bus topics to create."
   type        = list(string)
   default = [
+    "IdentityEvents",
     "OrganizationEvents",
     "ProjectEvents",
     "LicenseEvents",

@@ -50,11 +50,15 @@ resource "azurerm_role_assignment" "appconfig_data_reader" {
   principal_id         = each.value
 }
 
-# Redis Cache role assignments
-resource "azurerm_role_assignment" "redis_contributor" {
+# Redis Cache data-plane access via access policy assignments.
+# ARM RBAC roles (e.g. Redis Cache Contributor) do NOT grant data access;
+# Entra token authentication requires an access policy assignment.
+resource "azurerm_redis_cache_access_policy_assignment" "data_contributor" {
   for_each = var.redis_contributor_principal_ids
 
-  scope                = var.redis_cache_id
-  role_definition_name = "Redis Cache Contributor"
-  principal_id         = each.value
+  name               = "data-contributor-${each.key}"
+  redis_cache_id     = var.redis_cache_id
+  access_policy_name = "Data Contributor"
+  object_id          = each.value
+  object_id_alias    = "func-${each.key}"
 }

@@ -223,41 +223,68 @@
 ## Identity
 
     App: apps/api-identity (RestrictPoint.Api.Identity)
-    Service Bus Topic: identity
+    Service Bus Topics: IdentityEvents, OrganizationEvents (only Identity publishes these)
 
-    Database (Identity schema):
-        Users
-        UserOrganizations
-        RefreshTokens
-        OutboxEvents
+    ✅ PHASE 3 IMPLEMENTED (2026-07-16):
 
-    APIs:
-        GET  /v1/identity/me
-        GET  /v1/identity/organizations
-        POST /v1/identity/organizations
-        POST /v1/identity/organizations/{id}/invite
+    Architecture:
+        Clean Architecture: Functions → Application (vertical slices) → Domain → Infrastructure
+        Shared packages: RestrictPoint.Common (Result/Error), RestrictPoint.Auth (JWT middleware),
+            RestrictPoint.Messaging (event envelope + SB publisher), RestrictPoint.Database (BaseEntity/outbox/auditing)
+        Authentication: Entra External ID JWTs validated via OIDC discovery (RS256, key rollover safe)
+        Authorization: policy-based (Policies.CanManageMembers etc.), roles resolved from DB not token claims
+        Events: transactional outbox (Identity.OutboxMessages) → timer dispatcher (30s) → Service Bus
+        Caching: Redis user-context cache (10 min TTL, Entra auth, silent DB fallback)
+        JIT provisioning: GET /me creates the user on first authenticated call → UserRegistered
 
-    Events (published):
-        UserRegistered
+    Entra External ID app registrations (tenant 66162195-1310-42eb-86e5-94dbef0e027c):
+        RestrictPoint API: appId 13db69ee-e73b-45c6-a7e3-5f08b194094d (audience for all API JWTs)
+            Scope: api://13db69ee-e73b-45c6-a7e3-5f08b194094d/access_as_user (v2 tokens)
+        Restrict Point Portal (SPA): c607b690-8e90-4e29-8c9a-03960055e726 (wired to API scope;
+            admin consent pending — needs one-time grant in admin center)
+
+    Database (SQL schemas Identity + Organizations, EF Core migration InitialIdentitySchema applied):
+        Identity.Users (JIT-provisioned, unique ExternalProvider+ExternalId)
+        Identity.UserOrganizations (memberships: role + status, unique UserId+OrganizationId)
+        Identity.OutboxMessages (transactional outbox)
+        Organizations.Organizations (name, unique slug, status, billing email)
+        Organizations.Invitations (SHA-256 token hash only, 7-day expiry)
+        All tables: soft delete + rowversion + audit timestamps (AuditingSaveChangesInterceptor)
+        MI DB user: rp-dev-func-identity (db_datareader + db_datawriter, created WITH SID)
+
+    APIs (implemented):
+        GET  /v1/identity/me                          → MeResponse (JIT provision, cached)
+        GET  /v1/identity/organizations               → membership list
+        POST /v1/identity/organizations               → create org, caller becomes Owner (201)
+        POST /v1/identity/organizations/{id}/invite   → invite member, CanManageMembers policy (201)
+        GET  /health/live, /health/ready              → anonymous probes
+
+    Events (implemented):
+        UserRegistered v1.0 → IdentityEvents
+        UserInvited v1.0 → IdentityEvents
+        OrganizationCreated v1.0 → OrganizationEvents
+    Events (defined in catalog, later phases):
         UserAuthenticated
         UserProfileUpdated
-        UserInvited
         UserInvitationAccepted
         UserRemoved
         UserRoleChanged
 
-    Functions:
-        GetCurrentUser
-        RegisterUser
-        AuthenticateUser
-        InviteUser
-        AcceptInvitation
-        RemoveUser
-        ChangeUserRole
+    Functions (HTTP triggers + DispatchOutbox timer):
+        GetMe
+        ListOrganizations
+        CreateOrganization
+        InviteMember
+        DispatchOutbox (outbox → Service Bus every 30s)
+        HealthLive / HealthReady
 
     Dependencies:
         Entra External ID (authentication)
-        Redis (identity cache)
+        Azure SQL (Identity + Organizations schemas, Managed Identity auth)
+        Service Bus (IdentityEvents/OrganizationEvents topics, Managed Identity)
+        Redis (user context cache, Entra token auth + access policy)
+
+    Tests: tests/identity (53 passing — domain, handlers via SQLite, Result contracts)
 
     Shared Contracts:
         UserDto

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>RestrictPoint.Messaging</RootNamespace>
+    <Description>RestrictPoint shared messaging: domain event envelope and Service Bus publishing.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" />
+    <PackageReference Include="Azure.Identity" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\common\RestrictPoint.Common.csproj" />
+  </ItemGroup>
+</Project>

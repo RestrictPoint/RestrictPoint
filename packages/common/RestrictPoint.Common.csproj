@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>RestrictPoint.Common</RootNamespace>
+    <Description>RestrictPoint shared kernel: Result types, errors, and platform primitives.</Description>
+  </PropertyGroup>
+</Project>

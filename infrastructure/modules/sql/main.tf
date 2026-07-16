@@ -1,10 +1,10 @@
 resource "azurerm_mssql_server" "main" {
-  name                          = var.server_name
-  location                      = var.location
-  resource_group_name           = var.resource_group_name
-  version                       = "12.0"
-  minimum_tls_version           = "1.2"
-  
+  name                = var.server_name
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  version             = "12.0"
+  minimum_tls_version = "1.2"
+
   # Entra ID authentication only (no SQL auth)
   azuread_administrator {
     login_username              = var.aad_admin_login
@@ -20,17 +20,17 @@ resource "azurerm_mssql_server" "main" {
 
 # Main database (serverless for dev, provisioned for prod)
 resource "azurerm_mssql_database" "main" {
-  name                        = var.database_name
-  server_id                   = azurerm_mssql_server.main.id
-  collation                   = "SQL_Latin1_General_CP1_CI_AS"
-  max_size_gb                 = var.max_size_gb
-  sku_name                    = var.sku_name
-  zone_redundant              = var.zone_redundant
-  
+  name           = var.database_name
+  server_id      = azurerm_mssql_server.main.id
+  collation      = "SQL_Latin1_General_CP1_CI_AS"
+  max_size_gb    = var.max_size_gb
+  sku_name       = var.sku_name
+  zone_redundant = var.zone_redundant
+
   # Serverless-specific settings
   auto_pause_delay_in_minutes = var.auto_pause_delay_in_minutes
   min_capacity                = var.min_capacity
-  
+
   # Transparent Data Encryption enabled by default
   transparent_data_encryption_enabled = true
 

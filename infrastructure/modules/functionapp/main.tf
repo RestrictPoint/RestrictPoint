@@ -17,7 +17,7 @@ resource "azurerm_storage_account" "main" {
   account_tier             = "Standard"
   account_replication_type = "LRS" # Dev: LRS, Prod: GRS
   min_tls_version          = "TLS1_2"
-  
+
   # Blob properties
   blob_properties {
     delete_retention_policy {
@@ -34,7 +34,7 @@ resource "azurerm_service_plan" "main" {
   location            = var.location
   resource_group_name = var.resource_group_name
   os_type             = "Linux"
-  
+
   # Consumption (dev) uses sku_name = "Y1", Elastic Premium uses "EP1"/"EP2"/"EP3"
   sku_name = var.sku_name
 
@@ -60,25 +60,25 @@ resource "azurerm_linux_function_app" "main" {
 
   # Application settings
   app_settings = merge({
-    "APPLICATIONINSIGHTS_CONNECTION_STRING" = azurerm_application_insights.main.connection_string
-    "APPINSIGHTS_INSTRUMENTATIONKEY"        = azurerm_application_insights.main.instrumentation_key
-    "FUNCTIONS_WORKER_RUNTIME"              = "dotnet-isolated"
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"  = azurerm_application_insights.main.connection_string
+    "APPINSIGHTS_INSTRUMENTATIONKEY"         = azurerm_application_insights.main.instrumentation_key
+    "FUNCTIONS_WORKER_RUNTIME"               = "dotnet-isolated"
     "WEBSITE_USE_PLACEHOLDER_DOTNETISOLATED" = "1"
   }, var.app_settings)
 
   site_config {
     application_insights_connection_string = azurerm_application_insights.main.connection_string
     application_insights_key               = azurerm_application_insights.main.instrumentation_key
-    
+
     # Always use 64-bit process
     use_32_bit_worker = false
-    
+
     # HTTP/2 enabled
     http2_enabled = true
-    
+
     # Minimum TLS version
     minimum_tls_version = "1.2"
-    
+
     # Application stack
     application_stack {
       dotnet_version              = "8.0"
