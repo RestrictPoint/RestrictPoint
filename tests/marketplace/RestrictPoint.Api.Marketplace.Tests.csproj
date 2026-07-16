@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>RestrictPoint.Tests.Marketplace</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- CA1707: snake_case test method names are the established xUnit readability convention. -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\apps\api-marketplace\RestrictPoint.Api.Marketplace.csproj" />
+    <ProjectReference Include="..\shared\RestrictPoint.Tests.Shared.csproj" />
+  </ItemGroup>
+</Project>

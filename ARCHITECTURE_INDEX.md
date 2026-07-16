@@ -525,48 +525,89 @@
 ## Marketplace
 
     App: apps/api-marketplace (RestrictPoint.Api.Marketplace)
-    Service Bus Topic: marketplace
+    Service Bus Topic: MarketplaceEvents
 
-    Database (Marketplace schema):
-        Listings
-        ListingPricing
-        OutboxEvents
+    ✅ PHASE 6 FOUNDATION IMPLEMENTED (2026-07-16):
 
-    APIs:
-        GET  /v1/marketplace/listings     (filters: category, tag, rating, priceType)
-        POST /v1/marketplace/listings
-        POST /v1/marketplace/listings/{id}/publish
-        POST /v1/marketplace/listings/{id}/review
-        GET  /v1/marketplace/search
+    Architecture:
+        Publisher-centric marketplace for SharePoint/Teams web parts (docs/13)
+        Listings aggregate state with 7-state lifecycle (Draft→Published→Suspended/Deprecated→Removed)
+        ListingStateMachine enforces valid state transitions with Dictionary lookup
+        Review system with 24hr edit window and fraud prevention (no self-review)
+        Dynamic rating aggregation on Review creation
+        Hierarchical category taxonomy with slug-based routing
+        Tag system with usage tracking for trending discovery
+        Multiple pricing plans per listing (Free, OneTimePurchase, MonthlySubscription, AnnualSubscription)
+        Stripe integration via StripePriceId sync for billing
+        LicenseTemplate JSON field on PricingPlan for automatic license provisioning
 
-    Events (published):
-        MarketplaceListingCreated
-        MarketplaceListingPublished
-        MarketplaceListingUpdated
-        MarketplaceListingUnpublished
-        MarketplaceListingRemoved
-        PricingModelCreated
-        PricingModelUpdated
+    Domain Entities (Phase 6):
+        Listing: Core marketplace aggregate with 7 states (Draft, Published, Suspended, Deprecated, Removed, Rejected, UnderReview)
+            - State machine: Draft→Published/Removed; Published→Suspended/Deprecated/Removed; Suspended→Published/Removed; Deprecated→Removed
+            - Validation: Title 1-256 chars; Publish requires ≥1 active PricingPlan
+            - InstallCount increment, AverageRating/ReviewCount aggregation
+            - RecalculateRating() computes from Reviews collection
+        PricingPlan: Business rules enforced via Create() method
+            - Free: Price must be 0
+            - Subscription: Requires BillingInterval (Monthly/Annual)
+            - TrialDays: 0-365 validation
+            - IsActive flag for soft archive
+        Category: Hierarchical taxonomy (nullable ParentCategoryId)
+            - Slug auto-generation from name
+            - DisplayOrder for UI sorting
+        Tag: Many-to-many with Listing via ListingTag join table
+            - UsageCount tracking for trending
+            - IncrementUsage/DecrementUsage methods
+        Review: User feedback with moderation
+            - Rating 1-5 validation
+            - Comment max 4000 chars
+            - Update() enforces 24hr edit window via (now - CreatedUtc).TotalHours check
+            - IsFlagged for moderation, EditedUtc tracking
 
-    Events (consumed):
-        OrganizationCreated / OrganizationSuspended
-        ProjectArchived / ProjectDeleted
+    Database (Marketplace schema, migration InitialMarketplaceSchema created but not applied):
+        Listings (Id, ProjectId unique index, Status, AverageRating precision(3,2), composite index on Status+IsFeatured+AverageRating)
+        PricingPlans (ListingId FK, PricingType/BillingInterval as string enum, StripePriceId indexed, LicenseTemplate JSON)
+        Categories (Slug unique index, ParentCategoryId, DisplayOrder)
+        Tags (Name/Slug both unique, UsageCount indexed)
+        Reviews (Composite unique index ListingId+UserId, Rating indexed)
+        ListingTags (Composite PK ListingId+TagId, cascade delete)
+        OutboxMessages
+        MI DB user: pending creation (will be rp-dev-func-marketplace db_datareader+db_datawriter WITH SID)
 
-    Functions:
-        CreateListing
-        PublishListing
-        UnpublishListing
-        SubmitReview
-        SearchListings
+    APIs (handlers removed for MVP — Phase 6.1 implementation pending):
+        Health endpoints only:
+        GET  /health/live  → anonymous, {status:"healthy", service:"marketplace"}
+        GET  /health/ready → anonymous, {status:"ready", service:"marketplace"}
 
-    Dependencies:
-        Projects
-        Billing (purchase flow)
-        Organizations
+    Events (catalog — Phase 6.1):
+        ListingCreated, ListingPublished, ListingSuspended, ListingDeprecated, ListingRemoved,
+        PricingPlanAdded, PricingPlanUpdated, ReviewCreated, ReviewUpdated
 
-    Shared Contracts:
-        ListingDto
-        PricingDto
+    Events (consumed — Phase 6.1):
+        ProjectArchived/ProjectDeleted → unpublish/remove listings
+        SubscriptionActivated → install count
+
+    Functions (MVP — Phase 6.1 pending):
+        HealthLive/HealthReady only; handlers deferred to avoid API compatibility issues
+
+    Shared package usage:
+        RestrictPoint.Common (Result<T>, Error.NotFound/Conflict/Validation/Forbidden)
+        RestrictPoint.Database (AuditingSaveChangesInterceptor, OutboxMessage, BaseEntity)
+        Domain errors use static factory methods (Error.NotFound vs new Error)
+
+    Tests (created but not yet run — Phase 6.1):
+        tests/marketplace/Domain: 31 test cases (ListingTests, ListingStateMachineTests, PricingPlanTests, ReviewTests)
+        tests/marketplace/Application: Integration tests with SQLite in-memory, TestOutboxWriter, reflection-based private method testing
+        Not executed: handler tests require completion of Phase 6.1 API layer
+
+    Next Steps (Phase 6.1 — deferred pending API standardization):
+        1. Complete handler implementations matching established billing/licensing pattern
+        2. Run marketplace tests and verify domain logic
+        3. Apply migration InitialMarketplaceSchema
+        4. Provision MI database user rp-dev-func-marketplace
+        5. Deploy to Azure Functions
+        6. Implement featured listing curation workflow
+        7. Add full-text search (Azure Cognitive Search or SQL Server FTS)
 
 ---
 
