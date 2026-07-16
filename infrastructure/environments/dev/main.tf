@@ -1,6 +1,9 @@
 locals {
   name_prefix = "rp-${var.environment}"
 
+  # Deterministic suffix for globally-unique resource names (Key Vault, Redis, SQL)
+  hash_suffix = substr(md5("RestrictPoint-${var.environment}"), 0, 6)
+
   tags = {
     project     = "RestrictPoint"
     environment = var.environment
@@ -8,16 +11,20 @@ locals {
   }
 }
 
-# Use existing shared resource group created during Phase 0 bootstrap
-data "azurerm_resource_group" "shared" {
-  name = "RestrictPoint-Shared"
+# Environment-scoped resource group. RestrictPoint-Shared holds only cross-environment
+# resources (DNS zone, Terraform state storage, Entra External ID link).
+resource "azurerm_resource_group" "dev" {
+  name     = "RestrictPoint-Dev"
+  location = var.location
+
+  tags = local.tags
 }
 
 # Phase 0: Key Vault for secrets and signing keys
 resource "azurerm_key_vault" "main" {
-  name                       = "${local.name_prefix}-kv-${substr(md5(data.azurerm_resource_group.shared.id), 0, 6)}"
-  location                   = data.azurerm_resource_group.shared.location
-  resource_group_name        = data.azurerm_resource_group.shared.name
+  name                       = "${local.name_prefix}-kv-${local.hash_suffix}"
+  location                   = azurerm_resource_group.dev.location
+  resource_group_name        = azurerm_resource_group.dev.name
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
   soft_delete_retention_days = 30
@@ -31,8 +38,8 @@ resource "azurerm_key_vault" "main" {
 # Phase 0: Log Analytics workspace for observability
 resource "azurerm_log_analytics_workspace" "main" {
   name                = "${local.name_prefix}-logs"
-  location            = data.azurerm_resource_group.shared.location
-  resource_group_name = data.azurerm_resource_group.shared.name
+  location            = azurerm_resource_group.dev.location
+  resource_group_name = azurerm_resource_group.dev.name
   sku                 = "PerGB2018"
   retention_in_days   = 30 # Dev: 30 days; Prod: 90+
   daily_quota_gb      = 1  # Dev: cap ingestion to stay within free tier
@@ -48,8 +55,8 @@ module "servicebus" {
   source = "../../modules/servicebus"
 
   namespace_name      = "${local.name_prefix}-servicebus"
-  location            = data.azurerm_resource_group.shared.location
-  resource_group_name = data.azurerm_resource_group.shared.name
+  location            = azurerm_resource_group.dev.location
+  resource_group_name = azurerm_resource_group.dev.name
   sku                 = "Standard" # Dev: Standard, Prod: Premium
 
   tags = local.tags
@@ -59,12 +66,12 @@ module "servicebus" {
 module "redis" {
   source = "../../modules/redis"
 
-  redis_name          = "${local.name_prefix}-redis-${substr(md5(data.azurerm_resource_group.shared.id), 0, 6)}"
-  location            = data.azurerm_resource_group.shared.location
-  resource_group_name = data.azurerm_resource_group.shared.name
-  sku_name            = "Basic"    # Dev: Basic C0, Prod: Premium
+  redis_name          = "${local.name_prefix}-redis-${local.hash_suffix}"
+  location            = azurerm_resource_group.dev.location
+  resource_group_name = azurerm_resource_group.dev.name
+  sku_name            = "Basic" # Dev: Basic C0, Prod: Premium
   family              = "C"
-  capacity            = 0          # C0 = 250MB
+  capacity            = 0 # C0 = 250MB
 
   public_network_access_enabled = true # Dev: public with firewall, Prod: private endpoint
 
@@ -75,13 +82,13 @@ module "redis" {
 module "sql" {
   source = "../../modules/sql"
 
-  server_name         = "${local.name_prefix}-sql-${substr(md5("${data.azurerm_resource_group.shared.id}-centralus"), 0, 6)}"
-  database_name       = "RestrictPoint"
-  location            = "centralus"
-  resource_group_name = data.azurerm_resource_group.shared.name
-  sku_name            = "GP_S_Gen5_1" # Serverless: 1 vCore, auto-pause
-  max_size_gb         = 32
-  min_capacity        = 0.5
+  server_name                 = "${local.name_prefix}-sql-${local.hash_suffix}"
+  database_name               = "RestrictPoint"
+  location                    = "centralus"
+  resource_group_name         = azurerm_resource_group.dev.name
+  sku_name                    = "GP_S_Gen5_1" # Serverless: 1 vCore, auto-pause
+  max_size_gb                 = 32
+  min_capacity                = 0.5
   auto_pause_delay_in_minutes = 60 # Dev: auto-pause after 1 hour idle
 
   aad_admin_login     = "RestrictPoint Service Principal"
@@ -97,8 +104,8 @@ module "appconfig" {
   source = "../../modules/appconfig"
 
   appconfig_name      = "${local.name_prefix}-appconfig"
-  location            = data.azurerm_resource_group.shared.location
-  resource_group_name = data.azurerm_resource_group.shared.name
+  location            = azurerm_resource_group.dev.location
+  resource_group_name = azurerm_resource_group.dev.name
   sku                 = "free" # Dev: free, Prod: standard
 
   tags = local.tags
@@ -109,8 +116,8 @@ module "apim" {
   source = "../../modules/apim"
 
   apim_name           = "${local.name_prefix}-apim"
-  location            = data.azurerm_resource_group.shared.location
-  resource_group_name = data.azurerm_resource_group.shared.name
+  location            = azurerm_resource_group.dev.location
+  resource_group_name = azurerm_resource_group.dev.name
   sku_name            = "Consumption_0" # Dev: Consumption, Prod: Standard/Premium
   publisher_name      = "RestrictPoint"
   publisher_email     = "admin@restrictpoint.com"
@@ -123,7 +130,7 @@ module "frontdoor" {
   source = "../../modules/frontdoor"
 
   profile_name        = "${local.name_prefix}-fd"
-  resource_group_name = data.azurerm_resource_group.shared.name
+  resource_group_name = azurerm_resource_group.dev.name
   sku_name            = "Standard_AzureFrontDoor" # Dev: Standard, Prod: Premium (managed OWASP WAF)
   enable_waf          = true
   waf_mode            = "Prevention"
@@ -142,7 +149,7 @@ module "func_identity" {
   storage_account_name       = "${replace(local.name_prefix, "-", "")}stidentity"
   app_insights_name          = "${local.name_prefix}-ai-identity"
   location                   = "centralus" # MPN subscription: Y1 quota unavailable in eastus
-  resource_group_name        = data.azurerm_resource_group.shared.name
+  resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1" # Consumption
 
@@ -158,7 +165,7 @@ module "func_licensing" {
   storage_account_name       = "${replace(local.name_prefix, "-", "")}stlicensing"
   app_insights_name          = "${local.name_prefix}-ai-licensing"
   location                   = "centralus"
-  resource_group_name        = data.azurerm_resource_group.shared.name
+  resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
 
@@ -174,7 +181,7 @@ module "func_billing" {
   storage_account_name       = "${replace(local.name_prefix, "-", "")}stbilling"
   app_insights_name          = "${local.name_prefix}-ai-billing"
   location                   = "centralus"
-  resource_group_name        = data.azurerm_resource_group.shared.name
+  resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
 
@@ -190,7 +197,7 @@ module "func_marketplace" {
   storage_account_name       = "${replace(local.name_prefix, "-", "")}stmarketplace"
   app_insights_name          = "${local.name_prefix}-ai-marketplace"
   location                   = "centralus"
-  resource_group_name        = data.azurerm_resource_group.shared.name
+  resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
 
@@ -206,7 +213,7 @@ module "func_notifications" {
   storage_account_name       = "${replace(local.name_prefix, "-", "")}stnotifications"
   app_insights_name          = "${local.name_prefix}-ai-notifications"
   location                   = "centralus"
-  resource_group_name        = data.azurerm_resource_group.shared.name
+  resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
 
@@ -222,7 +229,7 @@ module "func_analytics" {
   storage_account_name       = "${replace(local.name_prefix, "-", "")}stanalytics"
   app_insights_name          = "${local.name_prefix}-ai-analytics"
   location                   = "centralus"
-  resource_group_name        = data.azurerm_resource_group.shared.name
+  resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
 
@@ -233,11 +240,11 @@ module "func_analytics" {
 module "rbac" {
   source = "../../modules/rbac"
 
-  key_vault_id           = azurerm_key_vault.main.id
-  sql_server_id          = module.sql.server_id
+  key_vault_id            = azurerm_key_vault.main.id
+  sql_server_id           = module.sql.server_id
   servicebus_namespace_id = module.servicebus.namespace_id
-  appconfig_id           = module.appconfig.appconfig_id
-  redis_cache_id         = module.redis.redis_id
+  appconfig_id            = module.appconfig.appconfig_id
+  redis_cache_id          = module.redis.redis_id
 
   # All Function Apps need Key Vault Secrets User access
   key_vault_secrets_user_principal_ids = {

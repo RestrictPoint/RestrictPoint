@@ -1,6 +1,6 @@
 output "resource_group_name" {
-  description = "Shared resource group name."
-  value       = data.azurerm_resource_group.shared.name
+  description = "Dev environment resource group name."
+  value       = azurerm_resource_group.dev.name
 }
 
 output "key_vault_id" {

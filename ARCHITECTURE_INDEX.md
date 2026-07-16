@@ -16,20 +16,27 @@
         URL: https://github.com/RestrictPoint/RestrictPoint
         Main branch: main
 
-    Azure Resources (RestrictPoint-Shared RG, eastus):
-        Storage Account: rpdevtfstate5507
+    Resource Group Strategy (restructured 2026-07-16):
+        RestrictPoint-Shared (eastus): cross-environment resources only
+            - DNS zone restrictpoint.com
+            - Terraform state storage rpdevtfstate5507
+            - Entra External ID tenant link (restrictpointext.onmicrosoft.com)
+        RestrictPoint-Dev (eastus): all dev environment resources (managed by Terraform)
+
+    Azure Resources (bootstrap):
+        Storage Account: rpdevtfstate5507 (RestrictPoint-Shared)
             Container: tfstate (Terraform state backend)
             Versioning: enabled
             Soft delete: 30 days
             RBAC: SP has Storage Blob Data Contributor
         
-        Key Vault: rp-dev-kv-1fe1d5
-            URI: https://rp-dev-kv-1fe1d5.vault.azure.net/
+        Key Vault: rp-dev-kv-301106 (RestrictPoint-Dev)
+            URI: https://rp-dev-kv-301106.vault.azure.net/
             RBAC: enabled (no access policies)
             Soft delete: 30 days
             Purge protection: disabled (dev only)
         
-        Log Analytics: rp-dev-logs
+        Log Analytics: rp-dev-logs (RestrictPoint-Dev)
             Retention: 30 days
             Daily quota: 1 GB (free tier cap)
         
@@ -73,7 +80,7 @@
         SKU: Consumption_0 (dev)
         Gateway URL: https://rp-dev-apim.azure-api.net
         Developer Portal: https://rp-dev-apim.developer.azure-api.net
-        Managed Identity: 54b96758-31e0-446d-a8b0-f8526df26022
+        Managed Identity: 18982e83-10db-4052-86d8-0026aa984adc
         Features: System-assigned identity, JWT validation ready, rate limiting
     
     Service Bus:
@@ -85,15 +92,15 @@
         Queues (7): Email, Webhook, InvoiceGeneration, UsageAggregation, Cleanup, Retry, DeadLetterProcessing
     
     Redis Cache:
-        Name: rp-dev-redis-1fe1d5
+        Name: rp-dev-redis-301106
         SKU: Basic C0 (250MB)
-        Endpoint: rp-dev-redis-1fe1d5.redis.cache.windows.net:6380 (SSL)
+        Endpoint: rp-dev-redis-301106.redis.cache.windows.net:6380 (SSL)
         Location: eastus
         Features: TLS 1.2, maxmemory-policy=volatile-lru
     
     Azure SQL:
-        Server: rp-dev-sql-29a04e
-        FQDN: rp-dev-sql-29a04e.database.windows.net
+        Server: rp-dev-sql-301106
+        FQDN: rp-dev-sql-301106.database.windows.net
         Location: centralus (eastus/eastus2/westus2 provisioning restricted for MPN subscriptions)
         Database: RestrictPoint (32GB, GP_S_Gen5_1 serverless)
         SKU: Serverless (0.5-1 vCore, auto-pause 60min)
@@ -124,7 +131,7 @@
     Dev Environment Notes:
         Total services: 6 core infrastructure components
         Estimated monthly cost: ~$72-80 (within $150 MPN budget)
-        All resources in RestrictPoint-Shared RG
+        All dev resources in RestrictPoint-Dev RG (Shared holds only DNS/tfstate/Entra)
         Public endpoints enabled (dev only; prod will use private endpoints)
         SQL placed in centralus due to MPN regional restrictions
 
@@ -145,7 +152,7 @@
     Identity Function App:
         Name: rp-dev-func-identity
         Hostname: rp-dev-func-identity.azurewebsites.net
-        Managed Identity: 6e55f796-1c06-4d03-995e-a0aa090acf62
+        Managed Identity: 7ae58462-9272-44b8-b625-efd3d1aa719e
         Storage: rpdevstidentity
         App Insights: rp-dev-ai-identity
         Service Plan: rp-dev-plan-identity (Y1 Consumption)
@@ -154,7 +161,7 @@
     Licensing Function App:
         Name: rp-dev-func-licensing
         Hostname: rp-dev-func-licensing.azurewebsites.net
-        Managed Identity: 3d7121fd-e294-42cc-934b-d938f4af5c4e
+        Managed Identity: 4db6cdef-ae44-4c8a-81ba-ba6284f9efe8
         Storage: rpdevstlicensing
         App Insights: rp-dev-ai-licensing
         Service Plan: rp-dev-plan-licensing (Y1 Consumption)
@@ -163,7 +170,7 @@
     Billing Function App:
         Name: rp-dev-func-billing
         Hostname: rp-dev-func-billing.azurewebsites.net
-        Managed Identity: 72ec5556-2eaa-4c36-8051-ab4abfbcdc4d
+        Managed Identity: cdc19888-270c-491f-987b-10989db502d8
         Storage: rpdevstbilling
         App Insights: rp-dev-ai-billing
         Service Plan: rp-dev-plan-billing (Y1 Consumption)
@@ -172,7 +179,7 @@
     Marketplace Function App:
         Name: rp-dev-func-marketplace
         Hostname: rp-dev-func-marketplace.azurewebsites.net
-        Managed Identity: 1a4f5fd9-8586-4972-a271-2f0cc71703cc
+        Managed Identity: 684e023b-bf54-4b5d-ac49-3d319ac76960
         Storage: rpdevstmarketplace
         App Insights: rp-dev-ai-marketplace
         Service Plan: rp-dev-plan-marketplace (Y1 Consumption)
@@ -181,7 +188,7 @@
     Notifications Function App:
         Name: rp-dev-func-notifications
         Hostname: rp-dev-func-notifications.azurewebsites.net
-        Managed Identity: 4d058dac-bf4e-4d24-aa02-5040fdda50ec
+        Managed Identity: b865f45e-c7ae-4767-8a47-de7315de1039
         Storage: rpdevstnotifications
         App Insights: rp-dev-ai-notifications
         Service Plan: rp-dev-plan-notifications (Y1 Consumption)
@@ -190,7 +197,7 @@
     Analytics Function App:
         Name: rp-dev-func-analytics
         Hostname: rp-dev-func-analytics.azurewebsites.net
-        Managed Identity: 2cda43c3-2661-4d8b-b05d-74a31531b053
+        Managed Identity: b1a10749-6746-424b-9544-0925aaea778c
         Storage: rpdevstanalytics
         App Insights: rp-dev-ai-analytics
         Service Plan: rp-dev-plan-analytics (Y1 Consumption)
