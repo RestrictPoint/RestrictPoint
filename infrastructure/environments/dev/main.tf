@@ -81,6 +81,17 @@ module "servicebus" {
   tags = local.tags
 }
 
+# Phase 5: Licensing consumes SubscriptionActivated from Billing (docs/12 — Billing
+# never issues licenses directly).
+resource "azurerm_servicebus_subscription" "licensing_billing_events" {
+  name               = "licensing"
+  topic_id           = module.servicebus.topic_ids["BillingEvents"]
+  max_delivery_count = 10 # Then dead-letter for investigation
+
+  default_message_ttl                  = "P14D"
+  dead_lettering_on_message_expiration = true
+}
+
 # Phase 1: Redis cache for session/license/config caching
 module "redis" {
   source = "../../modules/redis"
@@ -218,6 +229,9 @@ module "func_licensing" {
 
     # Identity service for organization role authorization (REST, token passthrough)
     "Identity__BaseUrl" = "https://${module.func_identity.function_app_hostname}/api/"
+
+    # Service Bus trigger binding for the BillingEvents consumer (Managed Identity)
+    "ServiceBusConnection__fullyQualifiedNamespace" = "${module.servicebus.namespace_name}.servicebus.windows.net"
   }
 
   tags = local.tags
@@ -235,6 +249,26 @@ module "func_billing" {
   resource_group_name        = azurerm_resource_group.dev.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   sku_name                   = "Y1"
+
+  app_settings = {
+    # Entra External ID token validation (management endpoints)
+    "EntraExternalId__TenantSubdomain" = "restrictpointext"
+    "EntraExternalId__TenantId"        = "66162195-1310-42eb-86e5-94dbef0e027c"
+    "EntraExternalId__Audience"        = "13db69ee-e73b-45c6-a7e3-5f08b194094d;api://13db69ee-e73b-45c6-a7e3-5f08b194094d"
+
+    # Managed Identity data access (no secrets)
+    "Sql__ConnectionString"               = "Server=tcp:${module.sql.server_fqdn},1433;Database=${module.sql.database_name};Authentication=Active Directory Default;Encrypt=True;"
+    "ServiceBus__FullyQualifiedNamespace" = "${module.servicebus.namespace_name}.servicebus.windows.net"
+
+    # Stripe secrets are fetched from Key Vault at startup via Managed Identity
+    "KeyVault__VaultUri" = azurerm_key_vault.main.vault_uri
+
+    # Identity service for organization role authorization (REST, token passthrough)
+    "Identity__BaseUrl" = "https://${module.func_identity.function_app_hostname}/api/"
+
+    # Revenue model (docs/12: 5-15% platform fee)
+    "Billing__PlatformFeePercent" = "10"
+  }
 
   tags = local.tags
 }

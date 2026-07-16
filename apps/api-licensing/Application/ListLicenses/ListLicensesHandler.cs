@@ -4,6 +4,7 @@ using RestrictPoint.Api.Licensing.Application.RevokeLicense;
 using RestrictPoint.Api.Licensing.Contracts;
 using RestrictPoint.Api.Licensing.Domain;
 using RestrictPoint.Api.Licensing.Infrastructure;
+using RestrictPoint.Auth;
 using RestrictPoint.Common;
 
 namespace RestrictPoint.Api.Licensing.Application.ListLicenses;
@@ -15,9 +16,9 @@ namespace RestrictPoint.Api.Licensing.Application.ListLicenses;
 public sealed class ListLicensesHandler
 {
     private readonly LicensingDbContext _dbContext;
-    private readonly IOrganizationAuthorizer _authorizer;
+    private readonly IOrganizationRoleResolver _authorizer;
 
-    public ListLicensesHandler(LicensingDbContext dbContext, IOrganizationAuthorizer authorizer)
+    public ListLicensesHandler(LicensingDbContext dbContext, IOrganizationRoleResolver authorizer)
     {
         _dbContext = dbContext;
         _authorizer = authorizer;

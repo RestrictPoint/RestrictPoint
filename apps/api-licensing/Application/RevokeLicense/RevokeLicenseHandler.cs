@@ -5,6 +5,7 @@ using RestrictPoint.Api.Licensing.Application.Events;
 using RestrictPoint.Api.Licensing.Contracts;
 using RestrictPoint.Api.Licensing.Domain;
 using RestrictPoint.Api.Licensing.Infrastructure;
+using RestrictPoint.Auth;
 using RestrictPoint.Common;
 using RestrictPoint.Database;
 using RestrictPoint.Messaging;
@@ -31,14 +32,14 @@ public sealed class RevokeLicenseHandler
     private static readonly string[] RevokingRoles = ["Owner", "Admin"];
 
     private readonly LicensingDbContext _dbContext;
-    private readonly IOrganizationAuthorizer _authorizer;
+    private readonly IOrganizationRoleResolver _authorizer;
     private readonly ILicenseCache _cache;
     private readonly IOutboxWriter _outbox;
     private readonly TimeProvider _timeProvider;
 
     public RevokeLicenseHandler(
         LicensingDbContext dbContext,
-        IOrganizationAuthorizer authorizer,
+        IOrganizationRoleResolver authorizer,
         ILicenseCache cache,
         IOutboxWriter outbox,
         TimeProvider timeProvider)

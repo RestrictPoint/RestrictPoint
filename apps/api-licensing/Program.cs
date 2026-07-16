@@ -101,7 +101,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 builder.Services.AddSingleton<ILicenseCache, RedisLicenseCache>();
 
 // --- Identity service client (organization role authorization) --------------------------
-builder.Services.AddHttpClient<IOrganizationAuthorizer, IdentityOrganizationAuthorizer>(client =>
+builder.Services.AddHttpClient<IOrganizationRoleResolver, IdentityOrganizationRoleResolver>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration.GetRequiredValue("Identity:BaseUrl"));
     client.Timeout = TimeSpan.FromSeconds(10);
@@ -111,6 +111,8 @@ builder.Services.AddHttpClient<IOrganizationAuthorizer, IdentityOrganizationAuth
 builder.Services.AddScoped<IOutboxWriter>(provider =>
     new OutboxWriter(provider.GetRequiredService<LicensingDbContext>()));
 builder.Services.AddSingleton<OutboxDispatcher>();
+builder.Services.AddScoped<LicenseIssuanceService>();
+builder.Services.AddScoped<RestrictPoint.Api.Licensing.Application.ConsumeBillingEvents.SubscriptionActivatedConsumer>();
 builder.Services.AddScoped<ValidateLicenseHandler>();
 builder.Services.AddScoped<IssueLicenseHandler>();
 builder.Services.AddScoped<RevokeLicenseHandler>();

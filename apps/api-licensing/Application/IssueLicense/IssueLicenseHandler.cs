@@ -5,6 +5,7 @@ using RestrictPoint.Api.Licensing.Application.Events;
 using RestrictPoint.Api.Licensing.Contracts;
 using RestrictPoint.Api.Licensing.Domain;
 using RestrictPoint.Api.Licensing.Infrastructure;
+using RestrictPoint.Auth;
 using RestrictPoint.Common;
 using RestrictPoint.Database;
 using RestrictPoint.Messaging;
@@ -36,22 +37,19 @@ public sealed class IssueLicenseHandler
     private static readonly string[] IssuingRoles = ["Owner", "Admin", "Developer"];
 
     private readonly LicensingDbContext _dbContext;
-    private readonly LicenseTokenService _tokenService;
-    private readonly IOrganizationAuthorizer _authorizer;
-    private readonly IOutboxWriter _outbox;
+    private readonly LicenseIssuanceService _issuance;
+    private readonly IOrganizationRoleResolver _authorizer;
     private readonly TimeProvider _timeProvider;
 
     public IssueLicenseHandler(
         LicensingDbContext dbContext,
-        LicenseTokenService tokenService,
-        IOrganizationAuthorizer authorizer,
-        IOutboxWriter outbox,
+        LicenseIssuanceService issuance,
+        IOrganizationRoleResolver authorizer,
         TimeProvider timeProvider)
     {
         _dbContext = dbContext;
-        _tokenService = tokenService;
+        _issuance = issuance;
         _authorizer = authorizer;
-        _outbox = outbox;
         _timeProvider = timeProvider;
     }
 
@@ -83,67 +81,22 @@ public sealed class IssueLicenseHandler
             return LicensingErrors.ExpiryRequired;
         }
 
-        var license = new License
-        {
-            ProjectId = request.ProjectId!.Value,
-            DeveloperOrganizationId = request.DeveloperOrganizationId!.Value,
-            CustomerOrganizationId = request.CustomerOrganizationId!.Value,
-            CustomerTenantId = request.CustomerTenantId!.Value,
-            LicenseType = licenseType,
-            IssuedUtc = utcNow,
-            ExpiresUtc = licenseType == LicenseType.Lifetime ? null : request.ExpiresUtc,
-            SubscriptionId = request.SubscriptionId,
-        };
-
-        foreach (var (key, enabled) in request.Features ?? new Dictionary<string, bool>())
-        {
-            license.Features.Add(new LicenseFeature { LicenseId = license.Id, FeatureKey = key, Enabled = enabled });
-        }
-
-        foreach (var (key, value) in request.Limits ?? new Dictionary<string, int>())
-        {
-            license.Limits.Add(new LicenseLimit { LicenseId = license.Id, LimitKey = key, Value = value });
-        }
-
-        foreach (var webPartGuid in request.WebPartGuids!)
-        {
-            license.WebParts.Add(new LicenseWebPart { LicenseId = license.Id, WebPartGuid = webPartGuid });
-        }
-
-        var payload = LicensePayloadFactory.Create(license, tokenId: Guid.NewGuid().ToString("N"));
-        var token = await _tokenService.CreateTokenAsync(payload, cancellationToken).ConfigureAwait(false);
-
-        _dbContext.Licenses.Add(license);
-        _dbContext.LicenseTokens.Add(new LicenseToken
-        {
-            LicenseId = license.Id,
-            TokenId = payload.TokenId,
-            KeyId = _tokenService.SignerKeyId,
-            IssuedUtc = utcNow,
-            ExpiresUtc = license.ExpiresUtc,
-        });
-
-        _outbox.Stage(
-            Topics.License,
-            DomainEventEnvelope.Create(
-                eventType: nameof(LicenseIssued),
-                eventVersion: EventMetadata.Version10,
-                publisher: EventMetadata.Publisher,
-                correlationId: context.CorrelationId,
-                organizationId: license.DeveloperOrganizationId,
-                tenantId: license.CustomerTenantId,
-                payload: new LicenseIssued
-                {
-                    LicenseId = license.Id,
-                    ProjectId = license.ProjectId,
-                    CustomerOrganizationId = license.CustomerOrganizationId,
-                    DeveloperOrganizationId = license.DeveloperOrganizationId,
-                    SubscriptionId = license.SubscriptionId,
-                    LicenseType = license.LicenseType.ToString(),
-                    ExpiresUtc = license.ExpiresUtc,
-                    IssuedUtc = license.IssuedUtc,
-                },
-                timeProvider: _timeProvider));
+        var (license, token) = await _issuance.IssueAsync(
+            new LicenseIssuanceSpec
+            {
+                ProjectId = request.ProjectId!.Value,
+                DeveloperOrganizationId = request.DeveloperOrganizationId!.Value,
+                CustomerOrganizationId = request.CustomerOrganizationId!.Value,
+                CustomerTenantId = request.CustomerTenantId!.Value,
+                LicenseType = licenseType,
+                ExpiresUtc = request.ExpiresUtc,
+                SubscriptionId = request.SubscriptionId,
+                Features = request.Features ?? new Dictionary<string, bool>(),
+                Limits = request.Limits ?? new Dictionary<string, int>(),
+                WebPartGuids = request.WebPartGuids!,
+            },
+            context.CorrelationId,
+            cancellationToken).ConfigureAwait(false);
 
         await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 

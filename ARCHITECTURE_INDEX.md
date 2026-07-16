@@ -452,61 +452,73 @@
 ## Billing
 
     App: apps/api-billing (RestrictPoint.Api.Billing)
-    Service Bus Topic: billing
+    Service Bus Topic: BillingEvents
     Only Billing may publish PaymentSucceeded.
 
-    Database (Billing schema):
-        Customers
-        Subscriptions
-        Payments
-        Invoices
-        OutboxEvents
+    ✅ PHASE 5 IMPLEMENTED (2026-07-16):
 
-    APIs:
-        POST /v1/billing/checkout
-        POST /v1/billing/webhook          (Stripe; idempotent)
-        GET  /v1/billing/subscriptions
-        POST /v1/billing/subscriptions/cancel
-        POST /v1/billing/stripe/connect
-        GET  /v1/billing/invoices
+    Architecture:
+        Stripe is merchant of record; Billing orchestrates (docs/12)
+        IPaymentProvider / IWebhookVerifier abstractions — Stripe.net isolated to
+            infrastructure; handlers are provider-agnostic and fully testable
+        Stripe secrets (stripe-api-key, stripe-webhook-secret) in rp-dev-kv-301106,
+            fetched at startup via Managed Identity — never in app settings
+        Platform fee: 10% (Billing__PlatformFeePercent, docs/12 range 5-15%)
 
-    Events (published):
-        StripeAccountConnected
-        StripeAccountDisconnected
-        SubscriptionCreated              (ordering required with Activated/Canceled)
-        SubscriptionActivated
-        SubscriptionRenewed
-        SubscriptionCanceled
-        SubscriptionExpired
-        PaymentSucceeded
-        PaymentFailed
-        RefundIssued
-        PlatformFeeCollected
-        DeveloperRevenueGenerated
-        DeveloperPayoutCompleted
-        InvoiceGenerated
+    Webhook processor (POST /v1/billing/webhook — anonymous; Stripe signature is
+    the credential, verified before any processing):
+        1. Signature verification (EventUtility.ConstructEvent, whsec from KV)
+        2. Idempotency: ProcessedWebhookEvents unique StripeEventId index;
+           marker commits atomically with the state change (race-safe)
+        3. State machine (SubscriptionStateMachine): out-of-order/stale events can
+           never force illegal transitions (e.g. resurrect a canceled subscription)
+        4. Outbox-atomic event emission — financial state and events never diverge
+        Handled: customer.subscription.{created,updated,deleted}, invoice.paid,
+            invoice.payment_failed; dunning Active→PastDue; recovery PastDue→Active
+        Stripe webhook endpoint: we_1TtoohDpmWKTUQn3aWO3e0cE (test mode) →
+            https://rp-dev-func-billing.azurewebsites.net/api/v1/billing/webhook
 
-    Events (consumed):
-        OrganizationCreated → create billing account
-        OrganizationSuspended
+    State machine (docs/12): Trialing→{Active,Canceled,Expired};
+        Active→{PastDue,Paused,Canceled,Refunded}; PastDue→{Active,Canceled};
+        Paused→{Active,Canceled}; Canceled→Expired; Expired/Refunded terminal
+
+    License issuance saga (Billing NEVER issues directly):
+        Checkout captures a validated LicenseTemplate onto the subscription
+        → webhook activation → SubscriptionActivated v1.1 (self-contained: template +
+          org/tenant context) → SB topic BillingEvents → subscription "licensing"
+        → Licensing SubscriptionActivatedConsumer issues idempotently (dedupe by
+          subscriptionId); malformed events throw → retry → dead-letter
+
+    Database (Billing schema, migration pending deploy):
+        Subscriptions (orgs, tenant, Stripe ids, plan, period, license template, licenseId)
+        Invoices / Payments (mirrored from Stripe, decimal amounts)
+        ProcessedWebhookEvents (idempotency), OutboxMessages
+
+    APIs (implemented):
+        POST /v1/billing/checkout             → 201, pending subscription + Stripe session
+        POST /v1/billing/webhook              → anonymous, signature-verified, idempotent
+        POST /v1/billing/subscriptions/cancel → customer org Owner/Admin/Billing;
+                                                Stripe-first (no local state on provider failure)
+        GET  /v1/billing/subscriptions?organizationId=  → member (customer or developer org)
+        GET  /v1/billing/invoices?organizationId=       → member
+        POST /v1/billing/stripe/connect       → 201, dev org Owner/Admin, Express onboarding
+
+    Events (implemented): SubscriptionCreated, SubscriptionActivated v1.1,
+        SubscriptionCanceled, SubscriptionPastDue, SubscriptionRenewed,
+        PaymentSucceeded, PaymentFailed, InvoicePaid
+    Events (catalog, later): SubscriptionExpired, RefundIssued, PlatformFeeCollected,
+        DeveloperRevenue*, InvoiceGenerated, StripeAccount*
 
     Functions:
-        CreateCheckoutSession
-        ProcessStripeWebhook
-        CancelSubscription
-        StartStripeConnectOnboarding
-        GenerateInvoice
-        ProcessDunning
+        CreateCheckout, StripeWebhook, CancelSubscription, ListSubscriptions,
+        ListInvoices, ConnectOnboarding, DispatchOutbox (30s), HealthLive/HealthReady
 
-    Dependencies:
-        Stripe (Connect)
-        Organizations
-        Licensing (downstream consumer)
+    Shared refactor (Phase 5): IOrganizationRoleResolver promoted to RestrictPoint.Auth
+        (used by licensing + billing)
 
-    Shared Contracts:
-        SubscriptionDto
-        InvoiceDto
-        Subscription states: Trial, Active, Grace, PastDue, Canceled, Expired, Suspended
+    Tests: tests/billing (31 passing — state machine matrix, webhook idempotency +
+        out-of-order attacks, dunning/recovery, checkout template validation);
+        licensing consumer saga tests in tests/licensing (4)
 
 ---
 

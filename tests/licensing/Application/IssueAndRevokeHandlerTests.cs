@@ -6,6 +6,7 @@ using RestrictPoint.Api.Licensing.Application.RevokeLicense;
 using RestrictPoint.Api.Licensing.Contracts;
 using RestrictPoint.Api.Licensing.Domain;
 using RestrictPoint.Api.Licensing.Infrastructure;
+using RestrictPoint.Auth;
 using RestrictPoint.Common;
 using RestrictPoint.Database;
 using Xunit;
@@ -13,7 +14,7 @@ using Xunit;
 namespace RestrictPoint.Api.Licensing.Tests.Application;
 
 /// <summary>Stub authorizer returning a fixed role (or null for non-members).</summary>
-public sealed class StubAuthorizer : IOrganizationAuthorizer
+public sealed class StubAuthorizer : IOrganizationRoleResolver
 {
     public string? Role { get; set; }
 
@@ -45,7 +46,11 @@ public sealed class IssueLicenseHandlerTests : IDisposable
     private static RequestContext Context() => new() { CorrelationId = "corr-issue", UserId = Guid.NewGuid() };
 
     private IssueLicenseHandler CreateHandler(LicensingDbContext context) =>
-        new(context, _tokenService, _authorizer, new OutboxWriter(context), _time);
+        new(
+            context,
+            new LicenseIssuanceService(context, _tokenService, new OutboxWriter(context), _time),
+            _authorizer,
+            _time);
 
     private IssueLicenseRequest Request(string licenseType = "Annual", DateTimeOffset? expires = null) => new()
     {

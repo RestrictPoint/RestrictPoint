@@ -2,25 +2,45 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using RestrictPoint.Api.Licensing.Application.Abstractions;
-using RestrictPoint.Api.Licensing.Domain;
 using RestrictPoint.Common;
 
-namespace RestrictPoint.Api.Licensing.Infrastructure;
+namespace RestrictPoint.Auth;
 
 /// <summary>
-/// Resolves the caller's organization role via the Identity service's GET /v1/identity/me,
-/// forwarding the caller's own bearer token. Bounded contexts communicate over REST —
-/// Licensing never reads Identity's tables.
+/// Resolves the caller's role in an organization. Services use this for cross-context
+/// authorization decisions; roles always come from the Identity service, never from
+/// token claims or local tables.
 /// </summary>
-public sealed partial class IdentityOrganizationAuthorizer : IOrganizationAuthorizer
+public interface IOrganizationRoleResolver
+{
+    /// <summary>
+    /// Returns the caller's role name in the organization, or null when the caller is not
+    /// an active member. Failures reaching Identity surface as an error result.
+    /// </summary>
+    Task<Result<string?>> GetCallerRoleAsync(
+        string bearerToken,
+        Guid organizationId,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Resolves roles via the Identity service's GET /v1/identity/me, forwarding the caller's
+/// own bearer token. Bounded contexts communicate over REST — no shared tables.
+/// </summary>
+public sealed partial class IdentityOrganizationRoleResolver : IOrganizationRoleResolver
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<IdentityOrganizationAuthorizer> _logger;
+    private static readonly Error IdentityUnavailable = Error.Unexpected(
+        "auth.identity_unavailable",
+        "The identity service could not be reached to authorize the request.");
 
-    public IdentityOrganizationAuthorizer(HttpClient httpClient, ILogger<IdentityOrganizationAuthorizer> logger)
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<IdentityOrganizationRoleResolver> _logger;
+
+    public IdentityOrganizationRoleResolver(
+        HttpClient httpClient,
+        ILogger<IdentityOrganizationRoleResolver> logger)
     {
         _httpClient = httpClient;
         _logger = logger;
@@ -44,7 +64,7 @@ public sealed partial class IdentityOrganizationAuthorizer : IOrganizationAuthor
         catch (HttpRequestException exception)
         {
             LogIdentityUnreachable(_logger, exception);
-            return LicensingErrors.IdentityUnavailable;
+            return IdentityUnavailable;
         }
 
         using (response)
@@ -57,7 +77,7 @@ public sealed partial class IdentityOrganizationAuthorizer : IOrganizationAuthor
             if (!response.IsSuccessStatusCode)
             {
                 LogIdentityError(_logger, (int)response.StatusCode);
-                return LicensingErrors.IdentityUnavailable;
+                return IdentityUnavailable;
             }
 
             var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -70,7 +90,7 @@ public sealed partial class IdentityOrganizationAuthorizer : IOrganizationAuthor
             catch (JsonException exception)
             {
                 LogIdentityUnreachable(_logger, exception);
-                return LicensingErrors.IdentityUnavailable;
+                return IdentityUnavailable;
             }
 
             var role = envelope?.Data?.Organizations?
